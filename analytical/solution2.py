@@ -108,7 +108,7 @@ try:
 
 
     values = {m: 1, k: 1, L: 1, x0: 1, y0: 1, vx0: 0, vy0: 1, mu: 70 * sp.pi / 180}
-    print("✓ После подстановки:")
+    print("После подстановки:")
     print(f"  x(t) = L2 + ({sp.simplify(sol_dx.subs(values))})")
     print(f"  y(t) = L1 + ({sp.simplify(sol_dy.subs(values))})")
 
@@ -116,12 +116,12 @@ try:
     y_num = (L + sol_dy).subs(values)
     vx_num = sp.diff(x_num, t)
     vy_num = sp.diff(y_num, t)
-    cx = 1 + sp.sin(70 * sp.pi / 180)
-    cy = 1 + sp.cos(70 * sp.pi / 180)
+    Cx_num = Cx.subs(values)
+    Cy_num = Cy.subs(values)
     E = sp.simplify(sp.Rational(1, 2) * (vx_num**2 + vy_num**2) + sp.Rational(1, 2) * (
         (sp.sqrt((x_num - 1)**2 + y_num**2) - 1)**2 +
         (sp.sqrt(x_num**2 + (y_num - 1)**2) - 1)**2 +
-        (sp.sqrt((x_num - cx)**2 + (y_num - cy)**2) - 1)**2
+        (sp.sqrt((x_num - Cx_num)**2 + (y_num - Cy_num)**2) - 1)**2
     ))
     E = sp.lambdify(t, E, "numpy")
     tt = np.linspace(0, 20, 1000)
@@ -130,6 +130,20 @@ try:
     plt.ylabel("E")
     plt.grid(True)
     plt.savefig("img/2-analitical-enegry.png", dpi=200, bbox_inches="tight")
+    print("График энергии сохранён в img/2-analitical-enegry.png")
+
+    xf = sp.lambdify(t, sp.N(x_num), "numpy")
+    yf = sp.lambdify(t, sp.N(y_num), "numpy")
+    xx = np.array(xf(tt), dtype=float)
+    yy = np.array(yf(tt), dtype=float)
+    plt.figure()
+    plt.plot(xx, yy)
+    plt.xlabel("x")
+    plt.ylabel("y")
+    plt.grid(True)
+    plt.axis("equal")
+    plt.savefig("img/2-analitical-trajectory.png", dpi=200, bbox_inches="tight")
+    print("График траектории сохранён в img/2-analitical-trajectory.png")
 
 except Exception as e:
     print(f"✗ Решение линеаризованной системы не найдено: {type(e).__name__}")
