@@ -1,6 +1,5 @@
 import tkinter as tk
 from tkinter import ttk
-
 import numpy as np
 
 import solution as sim
@@ -32,6 +31,25 @@ class App:
 
         self.canvas = tk.Canvas(root, width=700, height=500, bg="white")
         self.canvas.pack(fill="both", expand=True, padx=10, pady=10)
+
+        self.O = np.array([float(sim.A[0]), float(sim.B[1])])
+
+        pts0 = np.vstack([
+            sim.A.reshape(1, 2),
+            sim.B.reshape(1, 2),
+            sim.C.reshape(1, 2),
+            self.O.reshape(1, 2),
+        ])
+        self.xmin, self.ymin = pts0.min(axis=0) - 0.5
+        self.xmax, self.ymax = pts0.max(axis=0) + 0.5
+
+        self.wall_ids = {
+            "1": self.canvas.create_line(0, 0, 0, 0, fill="#444", width=3),
+            "2": self.canvas.create_line(0, 0, 0, 0, fill="#444", width=3),
+            "3": self.canvas.create_line(0, 0, 0, 0, fill="#444", width=3),
+        }
+        for wid in self.wall_ids.values():
+            self.canvas.tag_lower(wid)
 
         self.anchor_ids = {}
         self.anchor_text_ids = {}
@@ -76,6 +94,7 @@ class App:
             sim.A.reshape(1, 2),
             sim.B.reshape(1, 2),
             sim.C.reshape(1, 2),
+            self.O.reshape(1, 2),
         ])
         self.xmin, self.ymin = pts.min(axis=0) - 0.2
         self.xmax, self.ymax = pts.max(axis=0) + 0.2
@@ -84,11 +103,16 @@ class App:
         self._tick()
 
     def _on_configure(self, event=None):
-        if not self._ready and self.canvas.winfo_width() > 50 and self.canvas.winfo_height() > 50:
+        if self.canvas.winfo_width() <= 50 or self.canvas.winfo_height() <= 50:
+            return
+
+        if not self._ready:
             self._ready = True
-            self.start(self.method.get())
-        if self._ready and self.x is not None:
             self._redraw_static()
+            self.start(self.method.get())
+            return
+
+        self._redraw_static()
 
     def _to_canvas(self, x, y):
         w = self.canvas.winfo_width()
@@ -101,11 +125,58 @@ class App:
         return cx, cy
 
     def _redraw_static(self):
+        self._redraw_walls()
         r = 5
         for name, p in {"A": sim.A, "B": sim.B, "C": sim.C}.items():
             cx, cy = self._to_canvas(p[0], p[1])
             self.canvas.coords(self.anchor_ids[name], cx - r, cy - r, cx + r, cy + r)
             self.canvas.coords(self.anchor_text_ids[name], cx + r + 2, cy - r - 2)
+
+    def _redraw_walls(self):
+        w = self.canvas.winfo_width()
+        h = self.canvas.winfo_height()
+        sx = (w - 40) / max(self.xmax - self.xmin, 1e-9)
+        sy = (h - 40) / max(self.ymax - self.ymin, 1e-9)
+        s = max(min(sx, sy), 1e-9)
+
+        # Fixed on-screen wall length: 50 px
+        half_len_world = 25.0 / s
+
+        # Wall 1: y = 0 (segment centered at A)
+        a = sim.A.astype(float)
+        w1_p1 = (float(a[0] - half_len_world), 0.0)
+        w1_p2 = (float(a[0] + half_len_world), 0.0)
+
+        # Wall 2: x = 0 (segment centered at B)
+        b = sim.B.astype(float)
+        w2_p1 = (0.0, float(b[1] - half_len_world))
+        w2_p2 = (0.0, float(b[1] + half_len_world))
+
+        # Wall 3: passes through C and is perpendicular to spring 3 at equilibrium.
+        # Spring 3 direction at equilibrium is along (O - C).
+        v = self.O - sim.C
+        nrm = float(np.hypot(v[0], v[1]))
+        if nrm < 1e-12:
+            d = np.array([1.0, 0.0])
+        else:
+            # Perpendicular direction
+            d = np.array([-v[1], v[0]]) / nrm
+
+        p3 = sim.C.astype(float)
+        w3_p1 = (float(p3[0] - half_len_world * d[0]), float(p3[1] - half_len_world * d[1]))
+        w3_p2 = (float(p3[0] + half_len_world * d[0]), float(p3[1] + half_len_world * d[1]))
+
+        x1, y1 = self._to_canvas(*w1_p1)
+        x2, y2 = self._to_canvas(*w1_p2)
+        self.canvas.coords(self.wall_ids["1"], x1, y1, x2, y2)
+
+        x1, y1 = self._to_canvas(*w2_p1)
+        x2, y2 = self._to_canvas(*w2_p2)
+        self.canvas.coords(self.wall_ids["2"], x1, y1, x2, y2)
+
+        x1, y1 = self._to_canvas(*w3_p1)
+        x2, y2 = self._to_canvas(*w3_p2)
+        self.canvas.coords(self.wall_ids["3"], x1, y1, x2, y2)
 
     def _tick(self):
         if self.x is None:
