@@ -1,4 +1,6 @@
 import sympy as sp
+import numpy as np
+import matplotlib.pyplot as plt
 
 t = sp.symbols('t', real=True)
 m = sp.symbols('m', positive=True, real=True)
@@ -109,6 +111,25 @@ try:
     print("✓ После подстановки:")
     print(f"  x(t) = L2 + ({sp.simplify(sol_dx.subs(values))})")
     print(f"  y(t) = L1 + ({sp.simplify(sol_dy.subs(values))})")
+
+    x_num = (L + sol_dx).subs(values)
+    y_num = (L + sol_dy).subs(values)
+    vx_num = sp.diff(x_num, t)
+    vy_num = sp.diff(y_num, t)
+    cx = 1 + sp.sin(70 * sp.pi / 180)
+    cy = 1 + sp.cos(70 * sp.pi / 180)
+    E = sp.simplify(sp.Rational(1, 2) * (vx_num**2 + vy_num**2) + sp.Rational(1, 2) * (
+        (sp.sqrt((x_num - 1)**2 + y_num**2) - 1)**2 +
+        (sp.sqrt(x_num**2 + (y_num - 1)**2) - 1)**2 +
+        (sp.sqrt((x_num - cx)**2 + (y_num - cy)**2) - 1)**2
+    ))
+    E = sp.lambdify(t, E, "numpy")
+    tt = np.linspace(0, 20, 1000)
+    plt.plot(tt, E(tt))
+    plt.xlabel("t")
+    plt.ylabel("E")
+    plt.grid(True)
+    plt.savefig("img/2-analitical-enegry.png", dpi=200, bbox_inches="tight")
 
 except Exception as e:
     print(f"✗ Решение линеаризованной системы не найдено: {type(e).__name__}")
