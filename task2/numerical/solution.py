@@ -1,5 +1,4 @@
 import numpy as np
-import matplotlib.pyplot as plt
 from pathlib import Path
 
 m = 1.0
@@ -121,6 +120,7 @@ def verlet():
 
 
 def save_plots(name, x, y, vx, vy):
+    import matplotlib.pyplot as plt
     e = np.array([energy(xi, yi, vxi, vyi) for xi, yi, vxi, vyi in zip(x, y, vx, vy)])
 
     plt.figure()
