@@ -1,10 +1,14 @@
 import sympy as sp
 import numpy as np
 import matplotlib.pyplot as plt
+from pathlib import Path
 
 t = sp.symbols('t', real=True)
 m = sp.symbols('m', positive=True, real=True)
 mu = sp.symbols('mu', real=True)
+
+OUT_DIR = Path(*Path(__file__).resolve().parent.parts[-2:]) / "img"
+OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # k И L возьмем равными, так как с неравными
 # решение ищется дольше 1 катки в Clash Royale
@@ -129,8 +133,9 @@ try:
     plt.xlabel("t")
     plt.ylabel("E")
     plt.grid(True)
-    plt.savefig("img/2-analitical-enegry.png", dpi=200, bbox_inches="tight")
-    print("График энергии сохранён в img/2-analitical-enegry.png")
+    path = OUT_DIR / "enegry.png"
+    plt.savefig(path, dpi=200, bbox_inches="tight")
+    print("График энергии сохранён в " + str(path))
 
     xf = sp.lambdify(t, sp.N(x_num), "numpy")
     yf = sp.lambdify(t, sp.N(y_num), "numpy")
@@ -142,8 +147,9 @@ try:
     plt.ylabel("y")
     plt.grid(True)
     plt.axis("equal")
-    plt.savefig("img/2-analitical-trajectory.png", dpi=200, bbox_inches="tight")
-    print("График траектории сохранён в img/2-analitical-trajectory.png")
+    path = OUT_DIR / "trajectory.png"
+    plt.savefig(path, dpi=200, bbox_inches="tight")
+    print("График траектории сохранён в " + str(path))
 
 except Exception as e:
     print(f"✗ Решение линеаризованной системы не найдено: {type(e).__name__}")
