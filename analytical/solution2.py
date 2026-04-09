@@ -83,19 +83,32 @@ Fy_lin = dFy_ddx * dxt(t) + dFy_ddy * dyt(t)
 eq_x_lin = sp.Eq(m * sp.diff(dxt(t), t, t), Fx_lin)
 eq_y_lin = sp.Eq(m * sp.diff(dyt(t), t, t), Fy_lin)
 
+ics = {
+    dxt(0): x0 - L,
+    sp.diff(dxt(t), t).subs(t, 0): vx0,
+    dyt(0): y0 - L,
+    sp.diff(dyt(t), t).subs(t, 0): vy0,
+}
+
 print("Линеаризованная система:")
 print(f"  m·δx'' = ({dFx_ddx})·δx + ({dFx_ddy})·δy")
 print(f"  m·δy'' = ({dFy_ddx})·δx + ({dFy_ddy})·δy")
 print()
 
 try:
-    solution_lin = sp.dsolve([eq_x_lin, eq_y_lin], [dxt(t), dyt(t)])
+    solution_lin = sp.dsolve([eq_x_lin, eq_y_lin], [dxt(t), dyt(t)], ics=ics)
     print("✓ Решение линеаризованной системы в окрестности равновесия найдено:")
-
     sol_dx = solution_lin[0].rhs
     sol_dy = solution_lin[1].rhs
     print(f"  x(t) = L2 + ({sol_dx})")
     print(f"  y(t) = L1 + ({sol_dy})")
+    print()
+
+
+    values = {m: 1, k: 1, L: 1, x0: 1, y0: 1, vx0: 0, vy0: 1, mu: 70 * sp.pi / 180}
+    print("✓ После подстановки:")
+    print(f"  x(t) = L2 + ({sp.simplify(sol_dx.subs(values))})")
+    print(f"  y(t) = L1 + ({sp.simplify(sol_dy.subs(values))})")
 
 except Exception as e:
     print(f"✗ Решение линеаризованной системы не найдено: {type(e).__name__}")
