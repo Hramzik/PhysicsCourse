@@ -7,7 +7,7 @@ from pathlib import Path
 def main():
     t = sp.symbols("t", real=True)
 
-    OUT_DIR = Path(*Path(__file__).resolve().parent.parts[-2:]) / "img"
+    OUT_DIR = Path(*Path(__file__).resolve().parent.parts[-3:]) / "img"
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     # Константы, иначе умирает на тригонометрии

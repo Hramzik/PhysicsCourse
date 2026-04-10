@@ -4,58 +4,51 @@ from pathlib import Path
 m = 1.0
 k = 1.0
 L = 1.0
+mu = np.deg2rad(70.0)
 
 x0, y0 = 1.0, 1.0
-vx0, vy0 = 1.0, 0.0
+vx0, vy0 = 0.0, 1.0
 
 t0, t1, dt = 0.0, 20.0, 0.01
 n = int((t1 - t0) / dt) + 1
 tt = np.linspace(t0, t1, n)
 
-OUT_DIR = Path(*Path(__file__).resolve().parent.parts[-2:]) / "img"
+OUT_DIR = Path(*Path(__file__).resolve().parent.parts[-3:]) / "img"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-sin35 = float(np.sin(np.deg2rad(35.0)))
-cos35 = float(np.cos(np.deg2rad(35.0)))
-
-cot35 = cos35 / sin35
-sin70 = 2.0 * sin35 * cos35
-cos70 = cos35 * cos35 - sin35 * sin35
-
-tan70 = sin70 / cos70
-
-A = np.array([cot35, 0.0], dtype=float)
-B = np.array([cot35 - sin70, 1.0 + cos70], dtype=float)
-O = np.array([cot35, 1.0], dtype=float)
-
+A = np.array([L, 0.0])
+B = np.array([0.0, L])
+C = np.array([L + L * np.sin(mu), L + L * np.cos(mu)])
 EPS = 1e-12
 
 
-def spring_force(x: float, y: float, anchor: np.ndarray):
-    dx = x - float(anchor[0])
-    dy = y - float(anchor[1])
-    length = float(np.hypot(dx, dy))
+def spring_force(x, y, anchor):
+    dx = x - anchor[0]
+    dy = y - anchor[1]
+    length = np.hypot(dx, dy)
     length = max(length, EPS)
     coeff = k * (L - length) / length
     return coeff * dx, coeff * dy
 
 
-def force_total(x: float, y: float):
+def force_total(x, y):
     f1x, f1y = spring_force(x, y, A)
     f2x, f2y = spring_force(x, y, B)
-    return f1x + f2x, f1y + f2y
+    f3x, f3y = spring_force(x, y, C)
+    return f1x + f2x + f3x, f1y + f2y + f3y
 
 
-def accel(x: float, y: float):
+def accel(x, y):
     fx, fy = force_total(x, y)
     return fx / m, fy / m
 
 
-def energy(x: float, y: float, vx: float, vy: float):
-    l1 = max(float(np.hypot(x - A[0], y - A[1])), EPS)
-    l2 = max(float(np.hypot(x - B[0], y - B[1])), EPS)
+def energy(x, y, vx, vy):
+    l1 = max(np.hypot(x - A[0], y - A[1]), EPS)
+    l2 = max(np.hypot(x - B[0], y - B[1]), EPS)
+    l3 = max(np.hypot(x - C[0], y - C[1]), EPS)
     kinetic = 0.5 * m * (vx * vx + vy * vy)
-    potential = 0.5 * k * ((l1 - L) ** 2 + (l2 - L) ** 2)
+    potential = 0.5 * k * ((l1 - L) ** 2 + (l2 - L) ** 2 + (l3 - L) ** 2)
     return kinetic + potential
 
 
@@ -79,7 +72,7 @@ def explicit_euler():
     return x, y, vx, vy
 
 
-def implicit_euler(max_iter: int = 40, tol: float = 1e-10):
+def implicit_euler(max_iter=40, tol=1e-10):
     x, y, vx, vy = init_state()
     for i in range(n - 1):
         xg = x[i] + dt * vx[i]
@@ -100,7 +93,6 @@ def implicit_euler(max_iter: int = 40, tol: float = 1e-10):
                 break
 
         x[i + 1], y[i + 1], vx[i + 1], vy[i + 1] = xg, yg, vxg, vyg
-
     return x, y, vx, vy
 
 
@@ -127,10 +119,9 @@ def verlet():
     return x, y, vx, vy
 
 
-def save_plots(name: str, x, y, vx, vy):
+def save_plots(name, x, y, vx, vy):
     import matplotlib.pyplot as plt
-
-    e = np.array([energy(xi, yi, vxi, vyi) for xi, yi, vxi, vyi in zip(x, y, vx, vy)], dtype=float)
+    e = np.array([energy(xi, yi, vxi, vyi) for xi, yi, vxi, vyi in zip(x, y, vx, vy)])
 
     plt.figure()
     plt.plot(tt, e)

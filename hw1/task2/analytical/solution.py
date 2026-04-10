@@ -7,7 +7,7 @@ t = sp.symbols('t', real=True)
 m = sp.symbols('m', positive=True, real=True)
 mu = sp.symbols('mu', real=True)
 
-OUT_DIR = Path(*Path(__file__).resolve().parent.parts[-2:]) / "img"
+OUT_DIR = Path(*Path(__file__).resolve().parent.parts[-3:]) / "img"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # k И L возьмем равными, так как с неравными

@@ -15,7 +15,7 @@ t0, t1, dt = 0.0, 20.0, 0.01
 n = int((t1 - t0) / dt) + 1
 tt = np.linspace(t0, t1, n)
 
-OUT_DIR = Path(*Path(__file__).resolve().parent.parts[-2:]) / "img"
+OUT_DIR = Path(*Path(__file__).resolve().parent.parts[-3:]) / "img"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 sin70 = float(np.sin(np.deg2rad(70.0)))
