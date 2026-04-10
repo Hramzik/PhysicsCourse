@@ -8,10 +8,11 @@ import solution as sim
 class App:
     def __init__(self, root: tk.Tk):
         self.root = root
-        self.root.title("Simulation")
+        self.root.title("Simulation (task1)")
 
         self.speed = tk.DoubleVar(value=1.0)
         self.method = tk.StringVar(value="explicit_euler")
+
         self.i = 0
         self.x = self.y = None
 
@@ -32,35 +33,30 @@ class App:
         self.canvas = tk.Canvas(root, width=700, height=500, bg="white")
         self.canvas.pack(fill="both", expand=True, padx=10, pady=10)
 
-        self.O = np.array([float(sim.A[0]), float(sim.B[1])])
-
         pts0 = np.vstack([
             sim.A.reshape(1, 2),
             sim.B.reshape(1, 2),
-            sim.C.reshape(1, 2),
-            self.O.reshape(1, 2),
+            sim.O.reshape(1, 2),
         ])
-        self.xmin, self.ymin = pts0.min(axis=0) - 0.5
-        self.xmax, self.ymax = pts0.max(axis=0) + 0.5
+        self.xmin, self.ymin = pts0.min(axis=0) - 0.8
+        self.xmax, self.ymax = pts0.max(axis=0) + 0.8
 
         self.wall_ids = {
             "1": self.canvas.create_line(0, 0, 0, 0, fill="#444", width=3),
             "2": self.canvas.create_line(0, 0, 0, 0, fill="#444", width=3),
-            "3": self.canvas.create_line(0, 0, 0, 0, fill="#444", width=3),
         }
         for wid in self.wall_ids.values():
             self.canvas.tag_lower(wid)
 
         self.anchor_ids = {}
         self.anchor_text_ids = {}
-        for name, p in {"A": sim.A, "B": sim.B, "C": sim.C}.items():
+        for name, p in {"A": sim.A, "B": sim.B}.items():
             self.anchor_ids[name] = self.canvas.create_oval(0, 0, 0, 0, fill="black")
             self.anchor_text_ids[name] = self.canvas.create_text(0, 0, text=name, anchor="sw")
 
         self.spring_ids = {
             "A": self.canvas.create_line(0, 0, 0, 0, fill="#888"),
             "B": self.canvas.create_line(0, 0, 0, 0, fill="#888"),
-            "C": self.canvas.create_line(0, 0, 0, 0, fill="#888"),
         }
         self.mass_id = self.canvas.create_oval(0, 0, 0, 0, fill="red")
 
@@ -82,19 +78,16 @@ class App:
 
         self.method.set(method)
         self.i = 0
+
         solver = getattr(sim, method)
         x, y, vx, vy = solver()
-        self.x = x
-        self.y = y
-
-        self.root.update_idletasks()
+        self.x, self.y = x, y
 
         pts = np.vstack([
             np.column_stack([x, y]),
             sim.A.reshape(1, 2),
             sim.B.reshape(1, 2),
-            sim.C.reshape(1, 2),
-            self.O.reshape(1, 2),
+            sim.O.reshape(1, 2),
         ])
         self.xmin, self.ymin = pts.min(axis=0) - 0.2
         self.xmax, self.ymax = pts.max(axis=0) + 0.2
@@ -126,39 +119,23 @@ class App:
 
     def _redraw_static(self):
         self._redraw_walls()
+
         r = 5
-        for name, p in {"A": sim.A, "B": sim.B, "C": sim.C}.items():
-            cx, cy = self._to_canvas(p[0], p[1])
+        for name, p in {"A": sim.A, "B": sim.B}.items():
+            cx, cy = self._to_canvas(float(p[0]), float(p[1]))
             self.canvas.coords(self.anchor_ids[name], cx - r, cy - r, cx + r, cy + r)
             self.canvas.coords(self.anchor_text_ids[name], cx + r + 2, cy - r - 2)
 
     def _redraw_walls(self):
-        w = self.canvas.winfo_width()
-        h = self.canvas.winfo_height()
-        sx = (w - 40) / max(self.xmax - self.xmin, 1e-9)
-        sy = (h - 40) / max(self.ymax - self.ymin, 1e-9)
-        s = max(min(sx, sy), 1e-9)
+        extent = float(max(self.xmax - self.xmin, self.ymax - self.ymin, 1.0))
 
-        half_len_world = 25.0 / s
+        w1_p1 = (self.xmin - extent, 0.0)
+        w1_p2 = (self.xmax + extent, 0.0)
 
-        a = sim.A.astype(float)
-        w1_p1 = (float(a[0] - half_len_world), 0.0)
-        w1_p2 = (float(a[0] + half_len_world), 0.0)
-
-        b = sim.B.astype(float)
-        w2_p1 = (0.0, float(b[1] - half_len_world))
-        w2_p2 = (0.0, float(b[1] + half_len_world))
-
-        v = self.O - sim.C
-        nrm = float(np.hypot(v[0], v[1]))
-        if nrm < 1e-12:
-            d = np.array([1.0, 0.0])
-        else:
-            d = np.array([-v[1], v[0]]) / nrm
-
-        p3 = sim.C.astype(float)
-        w3_p1 = (float(p3[0] - half_len_world * d[0]), float(p3[1] - half_len_world * d[1]))
-        w3_p2 = (float(p3[0] + half_len_world * d[0]), float(p3[1] + half_len_world * d[1]))
+        x_left = self.xmin - extent
+        x_right = self.xmax + extent
+        w2_p1 = (x_left, sim.tan70 * x_left)
+        w2_p2 = (x_right, sim.tan70 * x_right)
 
         x1, y1 = self._to_canvas(*w1_p1)
         x2, y2 = self._to_canvas(*w1_p2)
@@ -167,10 +144,6 @@ class App:
         x1, y1 = self._to_canvas(*w2_p1)
         x2, y2 = self._to_canvas(*w2_p2)
         self.canvas.coords(self.wall_ids["2"], x1, y1, x2, y2)
-
-        x1, y1 = self._to_canvas(*w3_p1)
-        x2, y2 = self._to_canvas(*w3_p2)
-        self.canvas.coords(self.wall_ids["3"], x1, y1, x2, y2)
 
     def _tick(self):
         if self.x is None:
@@ -185,8 +158,8 @@ class App:
         r = 6
         self.canvas.coords(self.mass_id, cx - r, cy - r, cx + r, cy + r)
 
-        for name, anchor in {"A": sim.A, "B": sim.B, "C": sim.C}.items():
-            ax, ay = self._to_canvas(anchor[0], anchor[1])
+        for name, anchor in {"A": sim.A, "B": sim.B}.items():
+            ax, ay = self._to_canvas(float(anchor[0]), float(anchor[1]))
             self.canvas.coords(self.spring_ids[name], ax, ay, cx, cy)
 
         self.label.config(text=f"{self.method.get()}   t={sim.tt[self.i]:.2f}")
