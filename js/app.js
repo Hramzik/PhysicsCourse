@@ -1,0 +1,368 @@
+import * as THREE from '../vendor/three/three.module.min.js';
+import { OrbitControls } from '../vendor/three/OrbitControls.js';
+import { Simulation } from './sim/xpbd.js';
+import { buildDeformableCubeBody } from './sim/builders.js';
+
+(() => {
+  const statusEl = document.getElementById('status');
+  const setStatus = (msg) => {
+    if (!statusEl) return;
+    statusEl.textContent = msg;
+  };
+
+  try {
+    // Basic environment checks
+    const canvas = document.createElement('canvas');
+    const gl = canvas.getContext('webgl2') || canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+    if (!gl) {
+      setStatus('Ошибка: WebGL недоступен в этом браузере.');
+      return;
+    }
+  } catch (e) {
+    setStatus('Ошибка инициализации окружения: ' + String(e));
+    return;
+  }
+
+  const viewport = document.getElementById('viewport');
+  if (!viewport) {
+    setStatus('Ошибка: не найден #viewport');
+    return;
+  }
+
+  const ui = {
+    iterations: document.getElementById('iterations'),
+    iterationsValue: document.getElementById('iterationsValue'),
+
+    complianceEdges: document.getElementById('complianceEdges'),
+    complianceEdgesValue: document.getElementById('complianceEdgesValue'),
+
+    complianceVolume: document.getElementById('complianceVolume'),
+    complianceVolumeValue: document.getElementById('complianceVolumeValue'),
+
+    gravity: document.getElementById('gravity'),
+    gravityValue: document.getElementById('gravityValue'),
+
+    damping: document.getElementById('damping'),
+    dampingValue: document.getElementById('dampingValue'),
+
+    particleRadius: document.getElementById('particleRadius'),
+    particleRadiusValue: document.getElementById('particleRadiusValue'),
+
+    friction: document.getElementById('friction'),
+    frictionValue: document.getElementById('frictionValue'),
+
+    reset: document.getElementById('reset'),
+    pause: document.getElementById('pause'),
+  };
+
+  const params = {
+    dt: 1 / 60,
+    iterations: 16,
+    complianceEdges: 0.00002,
+    complianceVolume: 0.00005,
+    gravity: 12.0,
+    damping: 0.005,
+    particleRadius: 0.05,
+    friction: 0.5,
+
+    paused: false,
+  };
+
+  function bindRange(input, valueEl, format, onChange) {
+    const update = () => {
+      const v = Number(input.value);
+      valueEl.textContent = format(v);
+      onChange(v);
+    };
+    input.addEventListener('input', update);
+    update();
+  }
+
+  // Defaults
+  ui.iterations.value = String(params.iterations);
+  ui.complianceEdges.value = String(params.complianceEdges);
+  ui.complianceVolume.value = String(params.complianceVolume);
+  ui.gravity.value = String(params.gravity);
+  ui.damping.value = String(params.damping);
+  ui.particleRadius.value = String(params.particleRadius);
+  ui.friction.value = String(params.friction);
+
+  bindRange(ui.iterations, ui.iterationsValue, v => String(v), v => (params.iterations = v | 0));
+  bindRange(ui.complianceEdges, ui.complianceEdgesValue, v => v.toExponential(2), v => (params.complianceEdges = v));
+  bindRange(ui.complianceVolume, ui.complianceVolumeValue, v => v.toExponential(2), v => (params.complianceVolume = v));
+  bindRange(ui.gravity, ui.gravityValue, v => v.toFixed(1), v => (params.gravity = v));
+  bindRange(ui.damping, ui.dampingValue, v => v.toFixed(4), v => (params.damping = v));
+  bindRange(ui.particleRadius, ui.particleRadiusValue, v => v.toFixed(3), v => (params.particleRadius = v));
+  bindRange(ui.friction, ui.frictionValue, v => v.toFixed(2), v => (params.friction = v));
+
+  // --- Three.js setup ---
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0b1020);
+
+  const camera = new THREE.PerspectiveCamera(55, 1, 0.01, 200);
+  camera.position.set(2.8, 1.6, 2.8);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  viewport.appendChild(renderer.domElement);
+
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.35));
+  const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+  dir.position.set(3, 5, 2);
+  scene.add(dir);
+
+  // ground grid (visual reference)
+  const grid = new THREE.GridHelper(10, 20, 0x3a4b7a, 0x243154);
+  grid.position.y = -1.2;
+  scene.add(grid);
+
+  // --- Simulation ---
+  const sim = new Simulation();
+
+  // visuals
+  let bodyMesh = null;
+  let particleMeshes = [];
+
+  // picking / dragging
+  const raycaster = new THREE.Raycaster();
+  const pointer = new THREE.Vector2();
+  const dragPlane = new THREE.Plane();
+  const dragTarget = new THREE.Vector3();
+  let dragged = null; // { group, index }
+
+  function setSize() {
+    const w = viewport.clientWidth;
+    const h = viewport.clientHeight;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+
+  window.addEventListener('resize', setSize);
+  setSize();
+
+  function buildScene1() {
+    // Clear previous
+    sim.reset();
+    for (const m of particleMeshes) scene.remove(m);
+    particleMeshes = [];
+    if (bodyMesh) scene.remove(bodyMesh);
+    bodyMesh = null;
+
+    // Deformable body
+    const body = buildDeformableCubeBody({
+      size: 1.2,
+      center: new THREE.Vector3(0, 0.7, 0),
+      particleRadius: params.particleRadius,
+    });
+    sim.addGroup(body);
+
+    // Pin a few top particles
+    const indices = body.particles
+      .map((p, i) => ({ i, y: p.x.y }))
+      .sort((a, b) => b.y - a.y)
+      .slice(0, 2)
+      .map(o => o.i);
+    for (const i of indices) body.particles[i].invMass = 0;
+
+    setStatus(
+      `Ок: частицы тела = ${body.particles.length}\n` +
+        `Pinned anchors: ${indices.length}\n` +
+        `Запуск: ${params.paused ? 'PAUSED' : 'RUN'}`
+    );
+
+    // Visualize deformable: mesh shell
+    bodyMesh = new THREE.Mesh(
+      body.renderGeometry,
+      new THREE.MeshStandardMaterial({
+        color: 0x6aa6ff,
+        transparent: true,
+        opacity: 0.25,
+        roughness: 0.2,
+        metalness: 0.0,
+        side: THREE.DoubleSide,
+      })
+    );
+    scene.add(bodyMesh);
+
+    // Particles (spheres)
+    const sphereGeo = new THREE.SphereGeometry(1, 16, 12);
+    for (let i = 0; i < body.particles.length; i++) {
+      const p = body.particles[i];
+      const mat = new THREE.MeshStandardMaterial({
+        color: p.invMass === 0 ? 0xff4b4b : 0xdbe6ff,
+        roughness: 0.35,
+      });
+      const mesh = new THREE.Mesh(sphereGeo, mat);
+      mesh.scale.setScalar(params.particleRadius);
+      mesh.position.copy(p.x);
+      mesh.userData = { group: body, index: i };
+      scene.add(mesh);
+      particleMeshes.push(mesh);
+    }
+  }
+
+  function updateMaterials() {
+    // Update radii + colors (pinned/dragged)
+    for (const m of particleMeshes) {
+      const { group, index } = m.userData;
+      const p = group.particles[index];
+      m.scale.setScalar(params.particleRadius);
+      if (dragged && dragged.mesh === m) {
+        m.material.color.setHex(0xffe066);
+      } else {
+        m.material.color.setHex(p.invMass === 0 ? 0xff4b4b : 0xdbe6ff);
+      }
+    }
+  }
+
+  ui.reset.addEventListener('click', () => buildScene1());
+  ui.pause.addEventListener('click', () => {
+    params.paused = !params.paused;
+    ui.pause.textContent = params.paused ? 'Run' : 'Pause';
+    setStatus((statusEl?.textContent || '').replace(/Запуск: .*/g, `Запуск: ${params.paused ? 'PAUSED' : 'RUN'}`));
+  });
+
+  // --- Mouse picking ---
+  function setPointerFromEvent(ev) {
+    const rect = renderer.domElement.getBoundingClientRect();
+    pointer.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+    pointer.y = -(((ev.clientY - rect.top) / rect.height) * 2 - 1);
+  }
+
+  function pick(ev) {
+    setPointerFromEvent(ev);
+    raycaster.setFromCamera(pointer, camera);
+    const intersects = raycaster.intersectObjects(particleMeshes, false);
+    if (intersects.length === 0) return null;
+    return intersects[0].object;
+  }
+
+  function beginDrag(ev) {
+    if (ev.button !== 0) return; // left only
+    const obj = pick(ev);
+    if (!obj) return;
+
+    const { group, index } = obj.userData;
+    const p = group.particles[index];
+
+    dragged = { group, index, mesh: obj };
+    dragged.mesh.material.color.setHex(0xffe066);
+
+    // Plane perpendicular to camera through the particle
+    const camDir = new THREE.Vector3();
+    camera.getWorldDirection(camDir);
+    dragPlane.setFromNormalAndCoplanarPoint(camDir, p.x);
+
+    // Set initial target
+    raycaster.setFromCamera(pointer, camera);
+    raycaster.ray.intersectPlane(dragPlane, dragTarget);
+
+    // Mark particle as kinematic while dragging
+    p._savedInvMass = p.invMass;
+    p.invMass = 0;
+    p.xPrev.copy(p.x);
+    p.x.copy(dragTarget);
+
+    controls.enabled = false;
+    ev.preventDefault();
+  }
+
+  function updateDrag(ev) {
+    if (!dragged) return;
+    setPointerFromEvent(ev);
+    raycaster.setFromCamera(pointer, camera);
+    if (raycaster.ray.intersectPlane(dragPlane, dragTarget)) {
+      const p = dragged.group.particles[dragged.index];
+      p.xPrev.copy(p.x);
+      p.x.copy(dragTarget);
+    }
+  }
+
+  function endDrag() {
+    if (!dragged) return;
+    const p = dragged.group.particles[dragged.index];
+    p.invMass = p._savedInvMass;
+    delete p._savedInvMass;
+
+    dragged.mesh.material.color.setHex(0xdbe6ff);
+    dragged = null;
+    controls.enabled = true;
+  }
+
+  renderer.domElement.addEventListener('pointerdown', (ev) => {
+    setPointerFromEvent(ev);
+    beginDrag(ev);
+  });
+  window.addEventListener('pointermove', updateDrag);
+  window.addEventListener('pointerup', endDrag);
+  window.addEventListener('pointercancel', endDrag);
+
+  let acc = 0;
+  let last = performance.now();
+
+  // sim scripts are loaded via index.html before app.js
+  try {
+    buildScene1();
+    // Add helpers so even a broken sim is visible
+    const axes = new THREE.AxesHelper(1.0);
+    scene.add(axes);
+    animate();
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error(err);
+    setStatus('Runtime error:\n' + (err?.stack || String(err)));
+  }
+
+  function animate() {
+    requestAnimationFrame(animate);
+
+    const now = performance.now();
+    let frameDt = (now - last) / 1000;
+    last = now;
+
+    frameDt = Math.min(frameDt, 0.05);
+
+    controls.update();
+
+    if (!params.paused) {
+      acc += frameDt;
+      const fixedDt = params.dt;
+      const maxSteps = 3;
+      let steps = 0;
+      while (acc >= fixedDt && steps < maxSteps) {
+        sim.step(fixedDt, {
+          iterations: params.iterations,
+          complianceEdges: params.complianceEdges,
+          complianceVolume: params.complianceVolume,
+          gravity: params.gravity,
+          damping: params.damping,
+        });
+        acc -= fixedDt;
+        steps++;
+      }
+    }
+
+    // update visuals
+    if (sim.groups.length > 0) {
+      for (const group of sim.groups) {
+        group.syncRenderGeometry();
+      }
+
+      // deformable particle meshes
+      for (const m of particleMeshes) {
+        const { group, index } = m.userData;
+        m.position.copy(group.particles[index].x);
+      }
+
+      if (bodyMesh) bodyMesh.geometry.attributes.position.needsUpdate = true;
+
+      updateMaterials();
+    }
+
+    renderer.render(scene, camera);
+  }
+})();
