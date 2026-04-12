@@ -1,4 +1,5 @@
 import * as THREE from '../../vendor/three/three.module.min.js';
+import { projectFloorPositions, applyFloorVelocity, projectSelfCollisions } from './collisions.js';
 
 export class Particle {
   constructor(position, invMass, radius) {
@@ -100,8 +101,27 @@ export class Simulation {
       }
     }
 
-    for (const group of this.groups) {
-      group.solve(dt, settings);
+    // Reset XPBD lambdas once per time-step
+    for (const group of this.groups) group.resetLambdas();
+
+    for (let it = 0; it < settings.iterations; it++) {
+      // structural constraints
+      for (const group of this.groups) {
+        for (const c of group.constraints) c.project(group, dt, settings);
+      }
+
+      // collision projection (position level)
+      if (settings.enableFloorCollision) {
+        projectFloorPositions(this.groups, settings.floorY);
+      }
+      if (settings.enableSelfCollision) {
+        projectSelfCollisions(this.groups, settings.selfCollisionRadiusScale);
+      }
+    }
+
+    // velocity-level effects for floor contacts (restitution + friction)
+    if (settings.enableFloorCollision) {
+      applyFloorVelocity(this.groups, dt, settings.floorY, settings.restitution, settings.friction);
     }
   }
 }

@@ -1,7 +1,9 @@
 import * as THREE from '../vendor/three/three.module.min.js';
 import { OrbitControls } from '../vendor/three/OrbitControls.js';
 import { Simulation } from './sim/xpbd.js';
-import { buildDeformableCubeBody } from './sim/builders.js';
+import { buildScene1 } from './scenes/scene1.js';
+import { buildScene2 } from './scenes/scene2.js';
+import { buildScene3 } from './scenes/scene3.js';
 
 (() => {
   const statusEl = document.getElementById('status');
@@ -51,6 +53,17 @@ import { buildDeformableCubeBody } from './sim/builders.js';
     friction: document.getElementById('friction'),
     frictionValue: document.getElementById('frictionValue'),
 
+    restitution: document.getElementById('restitution'),
+    restitutionValue: document.getElementById('restitutionValue'),
+
+    selfCollision: document.getElementById('selfCollision'),
+    selfCollisionScale: document.getElementById('selfCollisionScale'),
+    selfCollisionScaleValue: document.getElementById('selfCollisionScaleValue'),
+
+    scene1: document.getElementById('scene1'),
+    scene2: document.getElementById('scene2'),
+    scene3: document.getElementById('scene3'),
+
     reset: document.getElementById('reset'),
     pause: document.getElementById('pause'),
   };
@@ -64,6 +77,12 @@ import { buildDeformableCubeBody } from './sim/builders.js';
     damping: 0.005,
     particleRadius: 0.05,
     friction: 0.5,
+    restitution: 0.25,
+    enableSelfCollision: true,
+    selfCollisionRadiusScale: 1.3,
+
+    activeScene: 1,
+    floorY: -1.2,
 
     paused: false,
   };
@@ -86,6 +105,9 @@ import { buildDeformableCubeBody } from './sim/builders.js';
   ui.damping.value = String(params.damping);
   ui.particleRadius.value = String(params.particleRadius);
   ui.friction.value = String(params.friction);
+  ui.restitution.value = String(params.restitution);
+  ui.selfCollision.checked = params.enableSelfCollision;
+  ui.selfCollisionScale.value = String(params.selfCollisionRadiusScale);
 
   bindRange(ui.iterations, ui.iterationsValue, v => String(v), v => (params.iterations = v | 0));
   bindRange(ui.complianceEdges, ui.complianceEdgesValue, v => v.toExponential(2), v => (params.complianceEdges = v));
@@ -94,6 +116,9 @@ import { buildDeformableCubeBody } from './sim/builders.js';
   bindRange(ui.damping, ui.dampingValue, v => v.toFixed(4), v => (params.damping = v));
   bindRange(ui.particleRadius, ui.particleRadiusValue, v => v.toFixed(3), v => (params.particleRadius = v));
   bindRange(ui.friction, ui.frictionValue, v => v.toFixed(2), v => (params.friction = v));
+  bindRange(ui.restitution, ui.restitutionValue, v => v.toFixed(2), v => (params.restitution = v));
+  bindRange(ui.selfCollisionScale, ui.selfCollisionScaleValue, v => v.toFixed(2), v => (params.selfCollisionRadiusScale = v));
+  ui.selfCollision.addEventListener('change', () => (params.enableSelfCollision = ui.selfCollision.checked));
 
   // --- Three.js setup ---
   const scene = new THREE.Scene();
@@ -123,7 +148,7 @@ import { buildDeformableCubeBody } from './sim/builders.js';
   const sim = new Simulation();
 
   // visuals
-  let bodyMesh = null;
+  let shellMeshes = [];
   let particleMeshes = [];
 
   // picking / dragging
@@ -144,64 +169,20 @@ import { buildDeformableCubeBody } from './sim/builders.js';
   window.addEventListener('resize', setSize);
   setSize();
 
-  function buildScene1() {
-    // Clear previous
-    sim.reset();
+  function clearVisuals() {
     for (const m of particleMeshes) scene.remove(m);
-    particleMeshes = [];
-    if (bodyMesh) scene.remove(bodyMesh);
-    bodyMesh = null;
+    particleMeshes.length = 0;
+    for (const m of shellMeshes) scene.remove(m);
+    shellMeshes.length = 0;
+  }
 
-    // Deformable body
-    const body = buildDeformableCubeBody({
-      size: 1.2,
-      center: new THREE.Vector3(0, 0.7, 0),
-      particleRadius: params.particleRadius,
-    });
-    sim.addGroup(body);
-
-    // Pin a few top particles
-    const indices = body.particles
-      .map((p, i) => ({ i, y: p.x.y }))
-      .sort((a, b) => b.y - a.y)
-      .slice(0, 2)
-      .map(o => o.i);
-    for (const i of indices) body.particles[i].invMass = 0;
-
-    setStatus(
-      `Ок: частицы тела = ${body.particles.length}\n` +
-        `Pinned anchors: ${indices.length}\n` +
-        `Запуск: ${params.paused ? 'PAUSED' : 'RUN'}`
-    );
-
-    // Visualize deformable: mesh shell
-    bodyMesh = new THREE.Mesh(
-      body.renderGeometry,
-      new THREE.MeshStandardMaterial({
-        color: 0x6aa6ff,
-        transparent: true,
-        opacity: 0.25,
-        roughness: 0.2,
-        metalness: 0.0,
-        side: THREE.DoubleSide,
-      })
-    );
-    scene.add(bodyMesh);
-
-    // Particles (spheres)
-    const sphereGeo = new THREE.SphereGeometry(1, 16, 12);
-    for (let i = 0; i < body.particles.length; i++) {
-      const p = body.particles[i];
-      const mat = new THREE.MeshStandardMaterial({
-        color: p.invMass === 0 ? 0xff4b4b : 0xdbe6ff,
-        roughness: 0.35,
-      });
-      const mesh = new THREE.Mesh(sphereGeo, mat);
-      mesh.scale.setScalar(params.particleRadius);
-      mesh.position.copy(p.x);
-      mesh.userData = { group: body, index: i };
-      scene.add(mesh);
-      particleMeshes.push(mesh);
+  function buildActiveScene() {
+    if (params.activeScene === 2) {
+      buildScene2({ sim, scene, params, setStatus, clearVisuals, shellMeshes, particleMeshes });
+    } else if (params.activeScene === 3) {
+      buildScene3({ sim, scene, params, setStatus, clearVisuals, shellMeshes, particleMeshes });
+    } else {
+      buildScene1({ sim, scene, params, setStatus, clearVisuals, shellMeshes, particleMeshes });
     }
   }
 
@@ -210,16 +191,38 @@ import { buildDeformableCubeBody } from './sim/builders.js';
     for (const m of particleMeshes) {
       const { group, index } = m.userData;
       const p = group.particles[index];
+      p.radius = params.particleRadius;
       m.scale.setScalar(params.particleRadius);
       if (dragged && dragged.mesh === m) {
         m.material.color.setHex(0xffe066);
       } else {
-        m.material.color.setHex(p.invMass === 0 ? 0xff4b4b : 0xdbe6ff);
+        if (p.invMass === 0) {
+          m.material.color.setHex(0xff4b4b);
+        } else if (group.kind === 'rigid') {
+          m.material.color.setHex(0xa5ff9a);
+        } else if (group.kind === 'soft') {
+          m.material.color.setHex(0xffd4a3);
+        } else {
+          m.material.color.setHex(0xdbe6ff);
+        }
       }
     }
   }
 
-  ui.reset.addEventListener('click', () => buildScene1());
+  ui.scene1.addEventListener('click', () => {
+    params.activeScene = 1;
+    buildActiveScene();
+  });
+  ui.scene2.addEventListener('click', () => {
+    params.activeScene = 2;
+    buildActiveScene();
+  });
+  ui.scene3?.addEventListener('click', () => {
+    params.activeScene = 3;
+    buildActiveScene();
+  });
+
+  ui.reset.addEventListener('click', () => buildActiveScene());
   ui.pause.addEventListener('click', () => {
     params.paused = !params.paused;
     ui.pause.textContent = params.paused ? 'Run' : 'Pause';
@@ -306,7 +309,7 @@ import { buildDeformableCubeBody } from './sim/builders.js';
 
   // sim scripts are loaded via index.html before app.js
   try {
-    buildScene1();
+    buildActiveScene();
     // Add helpers so even a broken sim is visible
     const axes = new THREE.AxesHelper(1.0);
     scene.add(axes);
@@ -340,6 +343,13 @@ import { buildDeformableCubeBody } from './sim/builders.js';
           complianceVolume: params.complianceVolume,
           gravity: params.gravity,
           damping: params.damping,
+
+          enableFloorCollision: params.activeScene === 2,
+          floorY: params.floorY,
+          restitution: params.restitution,
+          friction: params.friction,
+          enableSelfCollision: params.activeScene === 2 && params.enableSelfCollision,
+          selfCollisionRadiusScale: params.selfCollisionRadiusScale,
         });
         acc -= fixedDt;
         steps++;
@@ -358,7 +368,9 @@ import { buildDeformableCubeBody } from './sim/builders.js';
         m.position.copy(group.particles[index].x);
       }
 
-      if (bodyMesh) bodyMesh.geometry.attributes.position.needsUpdate = true;
+      for (const s of shellMeshes) {
+        s.geometry.attributes.position.needsUpdate = true;
+      }
 
       updateMaterials();
     }

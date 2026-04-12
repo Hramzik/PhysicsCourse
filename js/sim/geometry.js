@@ -43,6 +43,19 @@ export function makeIcoShell(radius, detail) {
   return { geometry, indexed: true };
 }
 
+export function makeDodecaShell(radius, detail = 0) {
+  // Dodecahedron has 20 vertices at detail=0 (good for ~20–25 points).
+  const base = new THREE.DodecahedronGeometry(radius, detail);
+  const geometry = mergeVertices(base, 1e-6);
+  base.dispose();
+
+  if (!geometry.index) {
+    throw new Error('makeDodecaShell: failed to create indexed geometry');
+  }
+
+  return { geometry, indexed: true };
+}
+
 export function makeCubeShell(size) {
   const h = size * 0.5;
   const positions = new Float32Array([

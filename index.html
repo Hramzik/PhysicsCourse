@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>HW2 — XPBD Deformable Body (Scene 1)</title>
+  <title>HW2 — XPBD Scenes</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -11,8 +11,8 @@
     <div id="viewport"></div>
 
     <aside id="panel">
-      <h1>HW2 — Scene 1</h1>
-      <p class="muted">Деформируемое тело (XPBD): ребра оболочки + 1 ограничение на объем. Точки можно перетаскивать мышью.</p>
+      <h1>HW2 — Scenes</h1>
+      <p class="muted">XPBD/PBD демо: деформируемое тело, коллизии, и сцена с несовместными ограничениями.</p>
 
       <div class="group">
         <label>
@@ -49,6 +49,27 @@
           Коэф. трения (пока не используется): <span id="frictionValue"></span>
           <input id="friction" type="range" min="0" max="2" step="0.01" />
         </label>
+
+        <label>
+          Упругость (restitution): <span id="restitutionValue"></span>
+          <input id="restitution" type="range" min="0" max="1" step="0.01" />
+        </label>
+
+        <label class="check">
+          <input id="selfCollision" type="checkbox" />
+          Самоколлизии (сферы вокруг точек)
+        </label>
+
+        <label>
+          Self-collision scale: <span id="selfCollisionScaleValue"></span>
+          <input id="selfCollisionScale" type="range" min="0.8" max="2.5" step="0.05" />
+        </label>
+      </div>
+
+      <div class="row">
+        <button id="scene1">Scene 1</button>
+        <button id="scene2">Scene 2</button>
+        <button id="scene3">Scene 3</button>
       </div>
 
       <div class="row">
