@@ -8,9 +8,19 @@ import { buildScene3 } from './scenes/scene3.js';
 
 (() => {
   const statusEl = document.getElementById('status');
-  const setStatus = (msg) => {
+  let baseStatusText = '';
+  let volumesStatusLine = '';
+
+  const renderStatus = () => {
     if (!statusEl) return;
-    statusEl.textContent = msg;
+    const parts = [];
+    if (baseStatusText) parts.push(baseStatusText);
+    if (volumesStatusLine) parts.push(volumesStatusLine);
+    statusEl.textContent = parts.join('\n');
+  };
+  const setStatus = (msg) => {
+    baseStatusText = String(msg ?? '');
+    renderStatus();
   };
 
   try {
@@ -311,7 +321,8 @@ import { buildScene3 } from './scenes/scene3.js';
   ui.pause.addEventListener('click', () => {
     params.paused = !params.paused;
     ui.pause.textContent = params.paused ? 'Run' : 'Pause';
-    setStatus((statusEl?.textContent || '').replace(/Запуск: .*/g, `Запуск: ${params.paused ? 'PAUSED' : 'RUN'}`));
+    baseStatusText = (baseStatusText || '').replace(/Запуск: .*/g, `Запуск: ${params.paused ? 'PAUSED' : 'RUN'}`);
+    renderStatus();
   });
 
   // --- Mouse picking ---
@@ -391,6 +402,7 @@ import { buildScene3 } from './scenes/scene3.js';
 
   let acc = 0;
   let last = performance.now();
+  let volAcc = 0;
 
   // sim scripts are loaded via index.html before app.js
   try {
@@ -443,6 +455,24 @@ import { buildScene3 } from './scenes/scene3.js';
 
     controls.update();
 
+    // Volume reporting (throttled)
+    {
+      volAcc += frameDt;
+      if (volAcc >= 0.1) {
+        volAcc = 0;
+
+        const parts = [];
+        for (let gi = 0; gi < sim.groups.length; gi++) {
+          const group = sim.groups[gi];
+          const v = computeGroupVolume(group);
+          const name = group.kind || `group${gi}`;
+          if (Number.isFinite(v)) parts.push(`${name}: ${v.toFixed(4)}`);
+        }
+        volumesStatusLine = parts.length ? `V: ${parts.join(' | ')}` : '';
+        renderStatus();
+      }
+    }
+
     if (!params.paused) {
       acc += frameDt * params.timeScale;
       const fixedDt = params.dt;
@@ -490,5 +520,31 @@ import { buildScene3 } from './scenes/scene3.js';
     }
 
     renderer.render(scene, camera);
+  }
+
+  function computeGroupVolume(group) {
+    const geom = group.renderGeometry;
+    const map = group.renderIndexToParticle;
+    if (!geom || !geom.index || !map) return NaN;
+
+    const idx = geom.index.array;
+    let V = 0;
+
+    const crossX = new THREE.Vector3();
+    for (let t = 0; t < idx.length; t += 3) {
+      const vi0 = idx[t + 0];
+      const vi1 = idx[t + 1];
+      const vi2 = idx[t + 2];
+
+      const p0 = group.particles[map[vi0]];
+      const p1 = group.particles[map[vi1]];
+      const p2 = group.particles[map[vi2]];
+      if (!p0 || !p1 || !p2) continue;
+
+      crossX.crossVectors(p1.x, p2.x);
+      V += p0.x.dot(crossX);
+    }
+
+    return V / 6.0;
   }
 })();

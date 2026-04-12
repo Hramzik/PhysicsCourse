@@ -19,6 +19,8 @@ export class Group {
     this._renderPositionAttr = null;
     this._renderPositions = null;
     this._renderIndexToParticle = null;
+
+    this.renderIndexToParticle = null;
   }
 
   addParticle(p) {
@@ -36,6 +38,9 @@ export class Group {
     this._renderPositionAttr = geometry.getAttribute('position');
     this._renderPositions = this._renderPositionAttr.array;
     this._renderIndexToParticle = indexToParticle;
+
+     // Public alias for convenience (debug/visualization)
+    this.renderIndexToParticle = indexToParticle;
 
     this.syncRenderGeometry();
   }
