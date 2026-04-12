@@ -32,8 +32,14 @@ export function makeIcoShell(radius, detail) {
   // For XPBD constraints we need shared vertices => indexed geometry.
   const base = new THREE.IcosahedronGeometry(radius, detail);
 
+  // mergeVertices hashes ALL attributes (position, normal, uv...).
+  // For polyhedra, non-indexed geometry often has per-face normals, so identical
+  // positions won't merge unless we remove normals first.
+  base.deleteAttribute('normal');
+
   // mergeVertices returns a NEW geometry (with an index) and leaves base intact.
   const geometry = mergeVertices(base, 1e-6);
+  geometry.computeVertexNormals();
   base.dispose();
 
   if (!geometry.index) {
@@ -46,7 +52,10 @@ export function makeIcoShell(radius, detail) {
 export function makeDodecaShell(radius, detail = 0) {
   // Dodecahedron has 20 vertices at detail=0 (good for ~20–25 points).
   const base = new THREE.DodecahedronGeometry(radius, detail);
+
+  base.deleteAttribute('normal');
   const geometry = mergeVertices(base, 1e-6);
+  geometry.computeVertexNormals();
   base.dispose();
 
   if (!geometry.index) {
