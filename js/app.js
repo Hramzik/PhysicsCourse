@@ -51,6 +51,9 @@ import { buildScene3 } from './scenes/scene3.js';
     particleRadius: document.getElementById('particleRadius'),
     particleRadiusValue: document.getElementById('particleRadiusValue'),
 
+    timeScale: document.getElementById('timeScale'),
+    timeScaleValue: document.getElementById('timeScaleValue'),
+
     friction: document.getElementById('friction'),
     frictionValue: document.getElementById('frictionValue'),
 
@@ -58,8 +61,6 @@ import { buildScene3 } from './scenes/scene3.js';
     restitutionValue: document.getElementById('restitutionValue'),
 
     selfCollision: document.getElementById('selfCollision'),
-    selfCollisionScale: document.getElementById('selfCollisionScale'),
-    selfCollisionScaleValue: document.getElementById('selfCollisionScaleValue'),
 
     scene1: document.getElementById('scene1'),
     scene2: document.getElementById('scene2'),
@@ -77,10 +78,10 @@ import { buildScene3 } from './scenes/scene3.js';
     gravity: 12.0,
     damping: 0.005,
     particleRadius: 0.05,
+    timeScale: 1.0,
     friction: 0.5,
     restitution: 0.25,
     enableSelfCollision: true,
-    selfCollisionRadiusScale: 1.3,
 
     activeScene: 1,
     floorY: -1.2,
@@ -105,10 +106,10 @@ import { buildScene3 } from './scenes/scene3.js';
   ui.gravity.value = String(params.gravity);
   ui.damping.value = String(params.damping);
   ui.particleRadius.value = String(params.particleRadius);
+  ui.timeScale.value = String(params.timeScale);
   ui.friction.value = String(params.friction);
   ui.restitution.value = String(params.restitution);
   ui.selfCollision.checked = params.enableSelfCollision;
-  ui.selfCollisionScale.value = String(params.selfCollisionRadiusScale);
 
   bindRange(ui.iterations, ui.iterationsValue, v => String(v), v => (params.iterations = v | 0));
   bindRange(ui.complianceEdges, ui.complianceEdgesValue, v => v.toExponential(2), v => (params.complianceEdges = v));
@@ -116,9 +117,9 @@ import { buildScene3 } from './scenes/scene3.js';
   bindRange(ui.gravity, ui.gravityValue, v => v.toFixed(1), v => (params.gravity = v));
   bindRange(ui.damping, ui.dampingValue, v => v.toFixed(4), v => (params.damping = v));
   bindRange(ui.particleRadius, ui.particleRadiusValue, v => v.toFixed(3), v => (params.particleRadius = v));
+  bindRange(ui.timeScale, ui.timeScaleValue, v => v.toFixed(2), v => (params.timeScale = v));
   bindRange(ui.friction, ui.frictionValue, v => v.toFixed(2), v => (params.friction = v));
   bindRange(ui.restitution, ui.restitutionValue, v => v.toFixed(2), v => (params.restitution = v));
-  bindRange(ui.selfCollisionScale, ui.selfCollisionScaleValue, v => v.toFixed(2), v => (params.selfCollisionRadiusScale = v));
   ui.selfCollision.addEventListener('change', () => (params.enableSelfCollision = ui.selfCollision.checked));
 
   // --- Three.js setup ---
@@ -443,7 +444,7 @@ import { buildScene3 } from './scenes/scene3.js';
     controls.update();
 
     if (!params.paused) {
-      acc += frameDt;
+      acc += frameDt * params.timeScale;
       const fixedDt = params.dt;
       const maxSteps = 3;
       let steps = 0;
@@ -460,7 +461,7 @@ import { buildScene3 } from './scenes/scene3.js';
           restitution: params.restitution,
           friction: params.friction,
           enableSelfCollision: params.activeScene === 2 && params.enableSelfCollision,
-          selfCollisionRadiusScale: params.selfCollisionRadiusScale,
+          selfCollisionRadiusScale: 1.0,
         });
         acc -= fixedDt;
         steps++;
