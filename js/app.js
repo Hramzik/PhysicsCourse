@@ -1,6 +1,7 @@
 import * as THREE from '../vendor/three/three.module.min.js';
 import { OrbitControls } from '../vendor/three/OrbitControls.js';
 import { Simulation } from './sim/xpbd.js';
+import { DistanceConstraint } from './sim/constraints.js';
 import { buildScene1 } from './scenes/scene1.js';
 import { buildScene2 } from './scenes/scene2.js';
 import { buildScene3 } from './scenes/scene3.js';
@@ -150,6 +151,14 @@ import { buildScene3 } from './scenes/scene3.js';
   // visuals
   let shellMeshes = [];
   let particleMeshes = [];
+  let constraintLineMeshes = [];
+  let constraintLineInfos = []; // { line, group, pairs }
+
+  const constraintLineMaterial = new THREE.LineBasicMaterial({
+    color: 0xff3b3b,
+    transparent: true,
+    opacity: 0.85,
+  });
 
   // picking / dragging
   const raycaster = new THREE.Raycaster();
@@ -174,6 +183,55 @@ import { buildScene3 } from './scenes/scene3.js';
     particleMeshes.length = 0;
     for (const m of shellMeshes) scene.remove(m);
     shellMeshes.length = 0;
+
+    for (const l of constraintLineMeshes) scene.remove(l);
+    constraintLineMeshes.length = 0;
+    constraintLineInfos.length = 0;
+  }
+
+  function rebuildConstraintLines() {
+    for (const l of constraintLineMeshes) scene.remove(l);
+    constraintLineMeshes.length = 0;
+    constraintLineInfos.length = 0;
+
+    for (const group of sim.groups) {
+      const pairs = [];
+      for (const c of group.constraints) {
+        if (c instanceof DistanceConstraint) pairs.push([c.i0, c.i1]);
+      }
+      if (pairs.length === 0) continue;
+
+      const positions = new Float32Array(pairs.length * 2 * 3);
+      const geom = new THREE.BufferGeometry();
+      geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+      const line = new THREE.LineSegments(geom, constraintLineMaterial);
+      line.frustumCulled = false;
+      scene.add(line);
+
+      constraintLineMeshes.push(line);
+      constraintLineInfos.push({ line, group, pairs });
+    }
+  }
+
+  function updateConstraintLines() {
+    for (const info of constraintLineInfos) {
+      const attr = info.line.geometry.getAttribute('position');
+      const arr = attr.array;
+      let k = 0;
+      const particles = info.group.particles;
+      for (const [i0, i1] of info.pairs) {
+        const a = particles[i0].x;
+        const b = particles[i1].x;
+        arr[k++] = a.x;
+        arr[k++] = a.y;
+        arr[k++] = a.z;
+        arr[k++] = b.x;
+        arr[k++] = b.y;
+        arr[k++] = b.z;
+      }
+      attr.needsUpdate = true;
+    }
   }
 
   function buildActiveScene() {
@@ -184,6 +242,8 @@ import { buildScene3 } from './scenes/scene3.js';
     } else {
       buildScene1({ sim, scene, params, setStatus, clearVisuals, shellMeshes, particleMeshes });
     }
+
+    rebuildConstraintLines();
   }
 
   function updateMaterials() {
@@ -371,6 +431,8 @@ import { buildScene3 } from './scenes/scene3.js';
       for (const s of shellMeshes) {
         s.geometry.attributes.position.needsUpdate = true;
       }
+
+      updateConstraintLines();
 
       updateMaterials();
     }
