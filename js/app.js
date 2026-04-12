@@ -167,6 +167,30 @@ import { buildScene3 } from './scenes/scene3.js';
   const dragTarget = new THREE.Vector3();
   let dragged = null; // { group, index }
 
+  // keyboard movement
+  const keysDown = new Set();
+  const moveSpeed = 2.2; // units/sec
+
+  function isTypingInInput() {
+    const el = document.activeElement;
+    if (!el) return false;
+    const tag = String(el.tagName || '').toLowerCase();
+    return tag === 'input' || tag === 'textarea' || tag === 'select';
+  }
+
+  function onKeyDown(ev) {
+    if (isTypingInInput()) return;
+    keysDown.add(ev.code);
+    if (ev.code === 'Space') ev.preventDefault();
+  }
+
+  function onKeyUp(ev) {
+    keysDown.delete(ev.code);
+  }
+
+  window.addEventListener('keydown', onKeyDown, { passive: false });
+  window.addEventListener('keyup', onKeyUp);
+
   function setSize() {
     const w = viewport.clientWidth;
     const h = viewport.clientHeight;
@@ -388,6 +412,33 @@ import { buildScene3 } from './scenes/scene3.js';
     last = now;
 
     frameDt = Math.min(frameDt, 0.05);
+
+    // WASD / Space / Shift camera movement
+    {
+      const forward = new THREE.Vector3();
+      camera.getWorldDirection(forward);
+      forward.y = 0;
+      const fLen = forward.length();
+      if (fLen > 1e-6) forward.multiplyScalar(1 / fLen);
+
+      const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
+      const up = new THREE.Vector3(0, 1, 0);
+
+      const move = new THREE.Vector3(0, 0, 0);
+      if (keysDown.has('KeyW')) move.add(forward);
+      if (keysDown.has('KeyS')) move.sub(forward);
+      if (keysDown.has('KeyD')) move.add(right);
+      if (keysDown.has('KeyA')) move.sub(right);
+      if (keysDown.has('Space')) move.add(up);
+      if (keysDown.has('ShiftLeft') || keysDown.has('ShiftRight')) move.sub(up);
+
+      const mLen = move.length();
+      if (mLen > 1e-6) {
+        move.multiplyScalar((moveSpeed * frameDt) / mLen);
+        camera.position.add(move);
+        controls.target.add(move);
+      }
+    }
 
     controls.update();
 
