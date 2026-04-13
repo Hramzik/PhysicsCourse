@@ -1,6 +1,7 @@
 import * as THREE from '../../vendor/three/three.module.min.js';
 import { projectFloorPositions, applyFloorVelocity, projectSelfCollisions } from './collisions.js';
 import { createPDContext, pdIteration } from './pd.js';
+import { createVBDContext, vbdIteration } from './vbd.js';
 
 export class Particle {
   constructor(position, invMass, radius) {
@@ -122,6 +123,26 @@ export class Simulation {
           pdIteration(group, dt, settings, pdCtx.get(group));
         }
 
+        if (settings.enableFloorCollision) {
+          projectFloorPositions(this.groups, settings.floorY);
+        }
+        if (settings.enableSelfCollision) {
+          projectSelfCollisions(this.groups, settings.selfCollisionRadiusScale);
+        }
+      }
+    } else if (method === 'vbd') {
+      const vbdCtx = new Map();
+      for (const group of this.groups) {
+        vbdCtx.set(group, createVBDContext(group, dt, settings));
+      }
+
+      for (let it = 0; it < settings.iterations; it++) {
+        for (const group of this.groups) {
+          vbdIteration(group, dt, settings, vbdCtx.get(group));
+        }
+
+        // Keep the same collision UX as XPBD/PD demos (prevents visible penetrations
+        // when using a small fixed iteration budget).
         if (settings.enableFloorCollision) {
           projectFloorPositions(this.groups, settings.floorY);
         }
