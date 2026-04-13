@@ -28,16 +28,13 @@ export function uniqueEdgesFromIndexedGeometry(indexArray) {
 }
 
 export function makeIcoShell(radius, detail) {
-  // In recent Three.js versions, polyhedron-based geometries can be non-indexed.
   // For XPBD constraints we need shared vertices => indexed geometry.
   const base = new THREE.IcosahedronGeometry(radius, detail);
 
-  // mergeVertices hashes ALL attributes (position, normal, uv...).
   // For polyhedra, non-indexed geometry often has per-face normals, so identical
   // positions won't merge unless we remove normals first.
   base.deleteAttribute('normal');
 
-  // mergeVertices returns a NEW geometry (with an index) and leaves base intact.
   const geometry = mergeVertices(base, 1e-6);
   geometry.computeVertexNormals();
   base.dispose();
@@ -50,7 +47,6 @@ export function makeIcoShell(radius, detail) {
 }
 
 export function makeDodecaShell(radius, detail = 0) {
-  // Dodecahedron has 20 vertices at detail=0 (good for ~20–25 points).
   const base = new THREE.DodecahedronGeometry(radius, detail);
 
   base.deleteAttribute('normal');
@@ -78,8 +74,7 @@ export function makeCubeShell(size) {
     -h,  h,  h, // 7
   ]);
 
-  // 12 triangles (2 per face)
-  // Faces: -Z, +Z, -X, +X, -Y, +Y
+  // 12 triangles
   const indices = new Uint16Array([
     0, 1, 2, 0, 2, 3, // -Z
     4, 6, 5, 4, 7, 6, // +Z
@@ -94,7 +89,6 @@ export function makeCubeShell(size) {
   geometry.setIndex(new THREE.BufferAttribute(indices, 1));
   geometry.computeVertexNormals();
 
-  // Already indexed with 8 shared vertices
   return { geometry, indexed: true };
 }
 

@@ -38,12 +38,6 @@ export function buildScene3({ sim, scene, params, setStatus, clearVisuals, shell
     p.xPrev.copy(target);
   }
 
-  setStatus(
-    `Ок: частицы тела = ${body.particles.length}\n` +
-      `Pinned anchors: ${top.length} (несовместные ограничения)\n` +
-      `Запуск: ${params.paused ? 'PAUSED' : 'RUN'}`
-  );
-
   const bodyMesh = new THREE.Mesh(
     body.renderGeometry,
     new THREE.MeshStandardMaterial({

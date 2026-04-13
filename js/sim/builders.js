@@ -80,7 +80,6 @@ export function buildSoftBall({ radius, detail, center, particleRadius }) {
   group.particles = particles;
   group.neighborEdges = buildNeighborEdgeSet(topo.edges);
 
-  // "Обычный" шарик: те же distance constraints, но compliance берется из settings
   for (const [i0, i1] of topo.edges) {
     const rest = particles[i0].x.distanceTo(particles[i1].x);
     group.addConstraint(new DistanceConstraint(i0, i1, rest, (s) => s.complianceEdges));

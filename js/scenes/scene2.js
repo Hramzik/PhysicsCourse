@@ -25,12 +25,6 @@ export function buildScene2({ sim, scene, params, setStatus, clearVisuals, shell
   soft.kind = 'soft';
   sim.addGroup(soft);
 
-  setStatus(
-    `Ок: rigid particles = ${rigid.particles.length}, soft particles = ${soft.particles.length}\n` +
-      `Floor y=${params.floorY.toFixed(2)}  self=${params.enableSelfCollision ? 'on' : 'off'}\n` +
-      `Запуск: ${params.paused ? 'PAUSED' : 'RUN'}`
-  );
-
   const sphereGeo = new THREE.SphereGeometry(1, 16, 12);
 
   function addGroupVisual(group, shellColor, pointColor) {

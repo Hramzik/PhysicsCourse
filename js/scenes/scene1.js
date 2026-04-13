@@ -2,11 +2,9 @@ import * as THREE from '../../vendor/three/three.module.min.js';
 import { buildDeformableCubeBody } from '../sim/builders.js';
 
 export function buildScene1({ sim, scene, params, setStatus, clearVisuals, shellMeshes, particleMeshes }) {
-  // Clear previous
   sim.reset();
   clearVisuals();
 
-  // Deformable body
   const body = buildDeformableCubeBody({
     size: 1.2,
     center: new THREE.Vector3(0, 0.7, 0),
@@ -14,7 +12,6 @@ export function buildScene1({ sim, scene, params, setStatus, clearVisuals, shell
   });
   sim.addGroup(body);
 
-  // Pin a few top particles
   const indices = body.particles
     .map((p, i) => ({ i, y: p.x.y }))
     .sort((a, b) => b.y - a.y)
@@ -22,13 +19,6 @@ export function buildScene1({ sim, scene, params, setStatus, clearVisuals, shell
     .map(o => o.i);
   for (const i of indices) body.particles[i].invMass = 0;
 
-  setStatus(
-    `Ок: частицы тела = ${body.particles.length}\n` +
-      `Pinned anchors: ${indices.length}\n` +
-      `Запуск: ${params.paused ? 'PAUSED' : 'RUN'}`
-  );
-
-  // Visualize deformable: mesh shell
   const bodyMesh = new THREE.Mesh(
     body.renderGeometry,
     new THREE.MeshStandardMaterial({
@@ -43,7 +33,6 @@ export function buildScene1({ sim, scene, params, setStatus, clearVisuals, shell
   scene.add(bodyMesh);
   shellMeshes.push(bodyMesh);
 
-  // Particles (spheres)
   const sphereGeo = new THREE.SphereGeometry(1, 16, 12);
   for (let i = 0; i < body.particles.length; i++) {
     const p = body.particles[i];

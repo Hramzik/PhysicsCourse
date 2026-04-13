@@ -24,7 +24,6 @@ import { buildScene3 } from './scenes/scene3.js';
   };
 
   try {
-    // Basic environment checks
     const canvas = document.createElement('canvas');
     const gl = canvas.getContext('webgl2') || canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
     if (!gl) {
@@ -160,15 +159,12 @@ import { buildScene3 } from './scenes/scene3.js';
   dir.position.set(3, 5, 2);
   scene.add(dir);
 
-  // ground grid (visual reference)
   const grid = new THREE.GridHelper(10, 20, 0x3a4b7a, 0x243154);
   grid.position.y = -1.2;
   scene.add(grid);
 
-  // --- Simulation ---
   const sim = new Simulation();
 
-  // visuals
   let shellMeshes = [];
   let particleMeshes = [];
   let constraintLineMeshes = [];
@@ -291,7 +287,6 @@ import { buildScene3 } from './scenes/scene3.js';
   }
 
   function updateMaterials() {
-    // Update radii + colors (pinned/dragged)
     for (const m of particleMeshes) {
       const { group, index } = m.userData;
       const p = group.particles[index];
@@ -360,12 +355,10 @@ import { buildScene3 } from './scenes/scene3.js';
     dragged = { group, index, mesh: obj };
     dragged.mesh.material.color.setHex(0xffe066);
 
-    // Plane perpendicular to camera through the particle
     const camDir = new THREE.Vector3();
     camera.getWorldDirection(camDir);
     dragPlane.setFromNormalAndCoplanarPoint(camDir, p.x);
 
-    // Set initial target
     raycaster.setFromCamera(pointer, camera);
     raycaster.ray.intersectPlane(dragPlane, dragTarget);
 
@@ -413,15 +406,12 @@ import { buildScene3 } from './scenes/scene3.js';
   let last = performance.now();
   let volAcc = 0;
 
-  // sim scripts are loaded via index.html before app.js
   try {
     buildActiveScene();
-    // Add helpers so even a broken sim is visible
     const axes = new THREE.AxesHelper(1.0);
     scene.add(axes);
     animate();
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.error(err);
     setStatus('Runtime error:\n' + (err?.stack || String(err)));
   }
@@ -435,7 +425,7 @@ import { buildScene3 } from './scenes/scene3.js';
 
     frameDt = Math.min(frameDt, 0.05);
 
-    // WASD / Space / Shift camera movement
+    // Camera movement
     {
       const forward = new THREE.Vector3();
       camera.getWorldDirection(forward);

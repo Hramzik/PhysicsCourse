@@ -30,7 +30,6 @@ export function applyFloorVelocity(groups, dt, floorY, restitution, friction) {
       let vnOut = vn;
       if (vn < 0) vnOut = -restitution * vn;
 
-      // Coulomb-like friction: limit tangential speed change by mu * normal impulse magnitude
       const vtLen = vt.length();
       if (vtLen > 1e-9) {
         const maxDrop = friction * (1 + restitution) * Math.abs(vn);

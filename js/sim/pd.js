@@ -7,7 +7,8 @@ function clamp(x, a, b) {
 function pdWeightFromCompliance(complianceEdges) {
   const c = Number(complianceEdges);
   if (!Number.isFinite(c)) return 1;
-  // Map “compliance” (XPBD-style) to a PD weight; keep bounded for stability.
+
+  // Map “compliance” (XPBD-style) to a PD weight
   const w = 1 / Math.max(1e-6, c);
   return clamp(w, 1, 1e6);
 }
@@ -167,7 +168,7 @@ export function pdIteration(group, dt, settings, ctx) {
     const iPinned = ctx.pinned[i] === 1;
     const jPinned = ctx.pinned[j] === 1;
 
-    // Local projection contribution (d_ij) only for free variables.
+    // Local projection contribution (d_ij) only for free variables
     if (!iPinned) {
       bx[i] += w * ddx;
       by[i] += w * ddy;
@@ -179,7 +180,6 @@ export function pdIteration(group, dt, settings, ctx) {
       bz[j] -= w * ddz;
     }
 
-    // If one endpoint is pinned, its (removed) coupling -w*x_pinned must be moved to RHS.
     if (!iPinned && jPinned) {
       bx[i] += w * xj.x;
       by[i] += w * xj.y;

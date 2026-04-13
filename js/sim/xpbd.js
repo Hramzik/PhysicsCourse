@@ -41,7 +41,7 @@ export class Group {
     this._renderPositions = this._renderPositionAttr.array;
     this._renderIndexToParticle = indexToParticle;
 
-     // Public alias for convenience (debug/visualization)
+    // Public alias for convenience
     this.renderIndexToParticle = indexToParticle;
 
     this.syncRenderGeometry();
@@ -109,7 +109,6 @@ export class Simulation {
       }
     }
 
-    // Reset XPBD lambdas once per time-step
     for (const group of this.groups) group.resetLambdas();
 
     if (method === 'pd') {
@@ -141,8 +140,6 @@ export class Simulation {
           vbdIteration(group, dt, settings, vbdCtx.get(group));
         }
 
-        // Keep the same collision UX as XPBD/PD demos (prevents visible penetrations
-        // when using a small fixed iteration budget).
         if (settings.enableFloorCollision) {
           projectFloorPositions(this.groups, settings.floorY);
         }
@@ -165,7 +162,6 @@ export class Simulation {
       }
     }
 
-    // velocity-level effects for floor contacts (restitution + friction)
     if (settings.enableFloorCollision) {
       applyFloorVelocity(this.groups, dt, settings.floorY, settings.restitution, settings.friction);
     }
