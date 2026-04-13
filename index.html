@@ -16,6 +16,14 @@
 
       <div class="group">
         <label>
+          Метод:
+          <select id="solverMethod">
+            <option value="xpbd">XPBD (PBD)</option>
+            <option value="pd">Projective Dynamics</option>
+          </select>
+        </label>
+
+        <label>
           Итерации: <span id="iterationsValue"></span>
           <input id="iterations" type="range" min="1" max="40" step="1" />
         </label>

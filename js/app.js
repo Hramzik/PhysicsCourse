@@ -46,6 +46,8 @@ import { buildScene3 } from './scenes/scene3.js';
     iterations: document.getElementById('iterations'),
     iterationsValue: document.getElementById('iterationsValue'),
 
+    solverMethod: document.getElementById('solverMethod'),
+
     complianceEdges: document.getElementById('complianceEdges'),
     complianceEdgesValue: document.getElementById('complianceEdgesValue'),
 
@@ -82,6 +84,7 @@ import { buildScene3 } from './scenes/scene3.js';
 
   const params = {
     dt: 1 / 60,
+    solverMethod: 'xpbd',
     iterations: 16,
     complianceEdges: 0.00002,
     complianceVolume: 0.00005,
@@ -110,6 +113,7 @@ import { buildScene3 } from './scenes/scene3.js';
   }
 
   // Defaults
+  if (ui.solverMethod) ui.solverMethod.value = params.solverMethod;
   ui.iterations.value = String(params.iterations);
   ui.complianceEdges.value = String(params.complianceEdges);
   ui.complianceVolume.value = String(params.complianceVolume);
@@ -122,6 +126,11 @@ import { buildScene3 } from './scenes/scene3.js';
   ui.selfCollision.checked = params.enableSelfCollision;
 
   bindRange(ui.iterations, ui.iterationsValue, v => String(v), v => (params.iterations = v | 0));
+
+  ui.solverMethod?.addEventListener('change', () => {
+    params.solverMethod = ui.solverMethod.value;
+    buildActiveScene();
+  });
   bindRange(ui.complianceEdges, ui.complianceEdgesValue, v => v.toExponential(2), v => (params.complianceEdges = v));
   bindRange(ui.complianceVolume, ui.complianceVolumeValue, v => v.toExponential(2), v => (params.complianceVolume = v));
   bindRange(ui.gravity, ui.gravityValue, v => v.toFixed(1), v => (params.gravity = v));
@@ -480,6 +489,7 @@ import { buildScene3 } from './scenes/scene3.js';
       let steps = 0;
       while (acc >= fixedDt && steps < maxSteps) {
         sim.step(fixedDt, {
+          solverMethod: params.solverMethod,
           iterations: params.iterations,
           complianceEdges: params.complianceEdges,
           complianceVolume: params.complianceVolume,

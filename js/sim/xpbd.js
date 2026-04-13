@@ -1,5 +1,6 @@
 import * as THREE from '../../vendor/three/three.module.min.js';
 import { projectFloorPositions, applyFloorVelocity, projectSelfCollisions } from './collisions.js';
+import { createPDContext, pdIteration } from './pd.js';
 
 export class Particle {
   constructor(position, invMass, radius) {
@@ -90,6 +91,7 @@ export class Simulation {
 
   step(dt, settings) {
     const g = new THREE.Vector3(0, -settings.gravity, 0);
+    const method = settings.solverMethod || 'xpbd';
 
     // integrate (verlet style)
     for (const group of this.groups) {
@@ -109,18 +111,36 @@ export class Simulation {
     // Reset XPBD lambdas once per time-step
     for (const group of this.groups) group.resetLambdas();
 
-    for (let it = 0; it < settings.iterations; it++) {
-      // structural constraints
+    if (method === 'pd') {
+      const pdCtx = new Map();
       for (const group of this.groups) {
-        for (const c of group.constraints) c.project(group, dt, settings);
+        pdCtx.set(group, createPDContext(group, dt, settings));
       }
 
-      // collision projection (position level)
-      if (settings.enableFloorCollision) {
-        projectFloorPositions(this.groups, settings.floorY);
+      for (let it = 0; it < settings.iterations; it++) {
+        for (const group of this.groups) {
+          pdIteration(group, dt, settings, pdCtx.get(group));
+        }
+
+        if (settings.enableFloorCollision) {
+          projectFloorPositions(this.groups, settings.floorY);
+        }
+        if (settings.enableSelfCollision) {
+          projectSelfCollisions(this.groups, settings.selfCollisionRadiusScale);
+        }
       }
-      if (settings.enableSelfCollision) {
-        projectSelfCollisions(this.groups, settings.selfCollisionRadiusScale);
+    } else {
+      for (let it = 0; it < settings.iterations; it++) {
+        for (const group of this.groups) {
+          for (const c of group.constraints) c.project(group, dt, settings);
+        }
+
+        if (settings.enableFloorCollision) {
+          projectFloorPositions(this.groups, settings.floorY);
+        }
+        if (settings.enableSelfCollision) {
+          projectSelfCollisions(this.groups, settings.selfCollisionRadiusScale);
+        }
       }
     }
 
