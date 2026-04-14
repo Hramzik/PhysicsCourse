@@ -1,4 +1,6 @@
 import { DistanceConstraint, VolumeConstraint } from './constraints.js';
+import { detectContacts } from './broadphase.js';
+import { applyVelocityCorrections } from './collisionResponse.js';
 
 function clamp(x, a, b) {
   return Math.max(a, Math.min(b, x));
@@ -119,8 +121,7 @@ export function createPDContext(group, dt, settings) {
 
   const L = choleskyDecompose(A, n);
 
-  // Save base matrix A so we can build A' when collisions add diagonal terms.
-  return { n, edges, volumes, xStar, miOverH2, pinned, w, L, baseA: A };
+  return { n, edges, volumes, xStar, miOverH2, pinned, w, L, baseA: A, contacts: [] };
 }
 
 export function pdIteration(group, dt, settings, ctx) {
@@ -196,22 +197,20 @@ export function pdIteration(group, dt, settings, ctx) {
   let Lsolve = ctx.L;
   let Aprimed = null;
 
-  if (settings.enableFloorCollision) {
-    const floorY = settings.floorY;
+  if (settings.enableFloorCollision || settings.enableSelfCollision) {
+    ctx.contacts = detectContacts(particles, settings);
     Aprimed = new Float64Array(ctx.baseA);
     let anyCol = false;
 
-    for (let i = 0; i < n; i++) {
-      if (ctx.pinned[i]) continue;
-      const p = particles[i];
-      const minY = floorY + p.radius;
-      if (p.x.y < minY) {
-        // projection: clamp y to minY, keep x/z
+    for (const c of ctx.contacts) {
+      if (c.type === 'floor') {
+        const i = c.i;
+        if (ctx.pinned[i]) continue;
+        const p = particles[i];
         const projX = p.x.x;
-        const projY = minY;
+        const projY = p.x.y + c.penetration; // minY
         const projZ = p.x.z;
 
-        // choose collision weight relative to inertia
         const mH2 = ctx.miOverH2[i] || 1;
         const wCol = Math.max(1e3, Math.min(2e5, 30 * mH2));
 
@@ -220,12 +219,52 @@ export function pdIteration(group, dt, settings, ctx) {
         by[i] += wCol * projY;
         bz[i] += wCol * projZ;
         anyCol = true;
+      } else if (c.type === 'pair') {
+        const i = c.i, j = c.j;
+        const pi = particles[i], pj = particles[j];
+        if (ctx.pinned[i] && ctx.pinned[j]) continue;
+
+        const nx = c.n.x, ny = c.n.y, nz = c.n.z;
+        // split penetration equally
+        const half = 0.5 * c.penetration;
+        const proj_i = { x: pi.x.x + nx * half, y: pi.x.y + ny * half, z: pi.x.z + nz * half };
+        const proj_j = { x: pj.x.x - nx * half, y: pj.x.y - ny * half, z: pj.x.z - nz * half };
+
+        const mH2_i = ctx.miOverH2[i] || 1;
+        const mH2_j = ctx.miOverH2[j] || 1;
+        const wColI = Math.max(1e3, Math.min(2e5, 15 * mH2_i));
+        const wColJ = Math.max(1e3, Math.min(2e5, 15 * mH2_j));
+
+        if (!ctx.pinned[i]) {
+          Aprimed[i * n + i] += wColI;
+          bx[i] += wColI * proj_i.x;
+          by[i] += wColI * proj_i.y;
+          bz[i] += wColI * proj_i.z;
+          anyCol = true;
+        } else {
+          // if i pinned, add its position contribution to j
+          bx[j] += wColJ * pi.x.x;
+          by[j] += wColJ * pi.x.y;
+          bz[j] += wColJ * pi.x.z;
+          anyCol = true;
+        }
+
+        if (!ctx.pinned[j]) {
+          Aprimed[j * n + j] += wColJ;
+          bx[j] += wColJ * proj_j.x;
+          by[j] += wColJ * proj_j.y;
+          bz[j] += wColJ * proj_j.z;
+          anyCol = true;
+        } else {
+          bx[i] += wColI * pj.x.x;
+          by[i] += wColI * pj.x.y;
+          bz[i] += wColI * pj.x.z;
+          anyCol = true;
+        }
       }
     }
 
-    if (anyCol) {
-      Lsolve = choleskyDecompose(Aprimed, n);
-    }
+    if (anyCol) Lsolve = choleskyDecompose(Aprimed, n);
   }
 
   const xOut = choleskySolve(Lsolve, n, bx);
@@ -242,5 +281,9 @@ export function pdIteration(group, dt, settings, ctx) {
 
   for (const v of ctx.volumes) {
     v.project(group, dt, settings);
+  }
+
+  if (ctx.contacts && ctx.contacts.length > 0) {
+    applyVelocityCorrections(particles, ctx.contacts, dt, settings);
   }
 }
