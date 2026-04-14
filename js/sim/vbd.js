@@ -1,5 +1,7 @@
 import * as THREE from '../../vendor/three/three.module.min.js';
 import { DistanceConstraint, VolumeConstraint } from './constraints.js';
+import { detectContacts } from './broadphase.js';
+import { applyVelocityCorrections } from './collisionResponse.js';
 
 function clamp(x, a, b) {
   return Math.max(a, Math.min(b, x));
@@ -130,12 +132,25 @@ export function createVBDContext(group, dt, settings) {
     y[i * 3 + 2] = x.z;
   }
 
-  return { n, incident, distanceConstraints, volumeConstraints, y, dt, settingsSnapshot: null };
+  return { n, incident, distanceConstraints, volumeConstraints, y, dt, settingsSnapshot: null, contacts: [] };
 }
 
 export function vbdIteration(group, dt, settings, ctx) {
   const particles = group.particles;
   const n = ctx.n;
+
+  ctx.contacts = detectContacts(particles, settings);
+
+  const perVertex = Array.from({ length: n }, () => []);
+  for (const c of ctx.contacts) {
+    if (c.type === 'floor') {
+      perVertex[c.i].push(c);
+    } else if (c.type === 'pair') {
+      perVertex[c.i].push(c);
+      perVertex[c.j].push(c);
+    }
+  }
+  ctx._perVertexContacts = perVertex;
 
   // Collision stiffness: tuned relative to inertia to be noticeable with few iterations.
   const mOverH2Ref = 1 / (Math.max(1e-8, particles.find(p => p.invMass !== 0)?.invMass ?? 1) * dt * dt);
@@ -212,54 +227,37 @@ export function vbdIteration(group, dt, settings, ctx) {
       addOuter(H, gi, k);
     }
 
-    // Floor collision penalty
-    if (settings.enableFloorCollision) {
-      const minY = settings.floorY + p.radius;
-      const pen = minY - p.x.y;
-      if (pen > 0) {
-        // E = 1/2 k pen^2, grad = -k pen * up
-        grad.y += -kFloor * pen;
-        H[4] += kFloor;
-      }
-    }
-
-    // Self-collision penalty (spheres)
-    if (settings.enableSelfCollision) {
-      for (let j = 0; j < n; j++) {
-        if (j === i) continue;
-        if (neighborEdges && neighborEdges.has(edgeKey(i, j))) continue;
-
-        const pj = particles[j];
-        const minDist = (p.radius + pj.radius) * settings.selfCollisionRadiusScale;
-
-        const d = p.x.clone().sub(pj.x);
-        const dist = d.length();
-        if (dist <= 1e-9 || dist >= minDist) continue;
-
-        const pen = minDist - dist;
-        nrm.copy(d).multiplyScalar(1 / dist);
-
-        // grad += -k * pen * n
-        grad.addScaledVector(nrm, -kSelf * pen);
-        addOuter(H, nrm, kSelf);
+    const perContacts = ctx._perVertexContacts;
+    if (perContacts && perContacts[i]) {
+      for (const c of perContacts[i]) {
+        // c: { type: 'pair'|'floor', i, j, n: {x,y,z}, penetration }
+        const k = (c.type === 'floor') ? kFloor : kSelf;
+        const nvec = new THREE.Vector3(c.n.x, c.n.y, c.n.z);
+        // For pair contacts, sign differs: grad_xi = -k*pen*n, grad_xj = +k*pen*n
+        const sign = (c.type === 'pair') ? (i === c.i ? -1 : 1) : -1;
+        grad.addScaledVector(nvec, sign * k * c.penetration);
+        addOuter(H, nvec, k);
       }
     }
 
     // Newton step: H dx = -grad
     rhs.copy(grad).multiplyScalar(-1);
 
-    // Small regularization to avoid singularities
+    // Regularization
     H[0] += 1e-8;
     H[4] += 1e-8;
     H[8] += 1e-8;
 
     if (!solve3x3(H, rhs, dx)) continue;
 
-    // Optional step limiting (cheap alternative to line search)
     const maxStep = 0.35;
     const dLen = dx.length();
     if (dLen > maxStep) dx.multiplyScalar(maxStep / dLen);
 
     p.x.add(dx);
+  }
+
+  if (ctx.contacts && ctx.contacts.length > 0) {
+    applyVelocityCorrections(particles, ctx.contacts, dt, settings);
   }
 }
