@@ -119,7 +119,8 @@ export function createPDContext(group, dt, settings) {
 
   const L = choleskyDecompose(A, n);
 
-  return { n, edges, volumes, xStar, miOverH2, pinned, w, L };
+  // Save base matrix A so we can build A' when collisions add diagonal terms.
+  return { n, edges, volumes, xStar, miOverH2, pinned, w, L, baseA: A };
 }
 
 export function pdIteration(group, dt, settings, ctx) {
@@ -191,9 +192,45 @@ export function pdIteration(group, dt, settings, ctx) {
     }
   }
 
-  const xOut = choleskySolve(ctx.L, n, bx);
-  const yOut = choleskySolve(ctx.L, n, by);
-  const zOut = choleskySolve(ctx.L, n, bz);
+  // Collision handling 
+  let Lsolve = ctx.L;
+  let Aprimed = null;
+
+  if (settings.enableFloorCollision) {
+    const floorY = settings.floorY;
+    Aprimed = new Float64Array(ctx.baseA);
+    let anyCol = false;
+
+    for (let i = 0; i < n; i++) {
+      if (ctx.pinned[i]) continue;
+      const p = particles[i];
+      const minY = floorY + p.radius;
+      if (p.x.y < minY) {
+        // projection: clamp y to minY, keep x/z
+        const projX = p.x.x;
+        const projY = minY;
+        const projZ = p.x.z;
+
+        // choose collision weight relative to inertia
+        const mH2 = ctx.miOverH2[i] || 1;
+        const wCol = Math.max(1e3, Math.min(2e5, 30 * mH2));
+
+        Aprimed[i * n + i] += wCol;
+        bx[i] += wCol * projX;
+        by[i] += wCol * projY;
+        bz[i] += wCol * projZ;
+        anyCol = true;
+      }
+    }
+
+    if (anyCol) {
+      Lsolve = choleskyDecompose(Aprimed, n);
+    }
+  }
+
+  const xOut = choleskySolve(Lsolve, n, bx);
+  const yOut = choleskySolve(Lsolve, n, by);
+  const zOut = choleskySolve(Lsolve, n, bz);
 
   for (let i = 0; i < n; i++) {
     if (ctx.pinned[i]) continue;
