@@ -1,4 +1,4 @@
-import { Group } from './xpbd.js';
+import { Group } from './simulation.js';
 import { DistanceConstraint, VolumeConstraint } from './constraints.js';
 import { makeIcoShell, makeCubeShell, uniqueEdgesFromIndexedGeometry, indexedToParticles } from './geometry.js';
 

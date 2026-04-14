@@ -1,6 +1,6 @@
 import * as THREE from '../vendor/three/three.module.min.js';
 import { OrbitControls } from '../vendor/three/OrbitControls.js';
-import { Simulation } from './sim/xpbd.js';
+import { Simulation } from './sim/simulation.js';
 import { DistanceConstraint } from './sim/constraints.js';
 import { buildScene1 } from './scenes/scene1.js';
 import { buildScene2 } from './scenes/scene2.js';

@@ -1,169 +1,105 @@
 import * as THREE from '../../vendor/three/three.module.min.js';
-import { projectFloorPositions, applyFloorVelocity, projectSelfCollisions } from './collisions.js';
-import { createPDContext, pdIteration } from './pd.js';
-import { createVBDContext, vbdIteration } from './vbd.js';
 
-export class Particle {
-  constructor(position, invMass, radius) {
-    this.x = position.clone();
-    this.xPrev = position.clone();
-    this.invMass = invMass;
-    this.radius = radius;
-  }
-}
+const UP = new THREE.Vector3(0, 1, 0);
 
-export class Group {
-  constructor() {
-    this.particles = [];
-    this.constraints = [];
-
-    this.renderGeometry = null;
-    this._renderPositionAttr = null;
-    this._renderPositions = null;
-    this._renderIndexToParticle = null;
-
-    this.renderIndexToParticle = null;
-  }
-
-  addParticle(p) {
-    this.particles.push(p);
-    return this.particles.length - 1;
-  }
-
-  addConstraint(c) {
-    this.constraints.push(c);
-    return c;
-  }
-
-  setRenderGeometry(geometry, indexToParticle) {
-    this.renderGeometry = geometry;
-    this._renderPositionAttr = geometry.getAttribute('position');
-    this._renderPositions = this._renderPositionAttr.array;
-    this._renderIndexToParticle = indexToParticle;
-
-    // Public alias for convenience
-    this.renderIndexToParticle = indexToParticle;
-
-    this.syncRenderGeometry();
-  }
-
-  syncRenderGeometry() {
-    if (!this.renderGeometry) return;
-    const arr = this._renderPositions;
-    const map = this._renderIndexToParticle;
-    for (let vi = 0; vi < map.length; vi++) {
-      const pi = map[vi];
-      const x = this.particles[pi].x;
-      const base = vi * 3;
-      arr[base + 0] = x.x;
-      arr[base + 1] = x.y;
-      arr[base + 2] = x.z;
-    }
-    this._renderPositionAttr.needsUpdate = true;
-    this.renderGeometry.computeVertexNormals();
-  }
-
-  resetLambdas() {
-    for (const c of this.constraints) c.resetLambda?.();
-  }
-
-  solve(dt, settings) {
-    this.resetLambdas();
-
-    for (let it = 0; it < settings.iterations; it++) {
-      for (const c of this.constraints) c.project(this, dt, settings);
+export function projectFloorPositions(groups, floorY) {
+  for (const group of groups) {
+    for (const p of group.particles) {
+      const r = p.radius;
+      const minY = floorY + r;
+      if (p.x.y < minY) p.x.y = minY;
     }
   }
 }
 
-export class Simulation {
-  constructor() {
-    this.groups = [];
+export function applyFloorVelocity(groups, dt, floorY, restitution, friction) {
+  const eps = 1e-5;
+  for (const group of groups) {
+    for (const p of group.particles) {
+      if (p.invMass === 0) continue;
+
+      const r = p.radius;
+      const minY = floorY + r;
+      if (p.x.y > minY + eps) continue;
+
+      // Reconstruct velocity from Verlet
+      const v = p.x.clone().sub(p.xPrev).multiplyScalar(1 / dt);
+      const vn = v.dot(UP);
+      const vt = v.clone().sub(UP.clone().multiplyScalar(vn));
+
+      let vnOut = vn;
+      if (vn < 0) vnOut = -restitution * vn;
+
+      const vtLen = vt.length();
+      if (vtLen > 1e-9) {
+        const maxDrop = friction * (1 + restitution) * Math.abs(vn);
+        const newLen = Math.max(0, vtLen - maxDrop);
+        vt.multiplyScalar(newLen / vtLen);
+      }
+
+      const vOut = vt.addScaledVector(UP, vnOut);
+      p.xPrev.copy(p.x).addScaledVector(vOut, -dt);
+    }
   }
+}
 
-  reset() {
-    this.groups = [];
-  }
+function edgeKey(i, j) {
+  return i < j ? i + ',' + j : j + ',' + i;
+}
 
-  addGroup(group) {
-    this.groups.push(group);
-    return group;
-  }
+export function projectSelfCollisions(groups, radiusScale) {
+  for (const group of groups) {
+    const particles = group.particles;
+    const neighborEdges = group.neighborEdges || null; // Set of "i,j" keys
 
-  step(dt, settings) {
-    const g = new THREE.Vector3(0, -settings.gravity, 0);
-    const method = settings.solverMethod || 'xpbd';
+    for (let i = 0; i < particles.length; i++) {
+      for (let j = i + 1; j < particles.length; j++) {
+        if (neighborEdges && neighborEdges.has(edgeKey(i, j))) continue;
 
-    // integrate (verlet style)
-    for (const group of this.groups) {
-      for (const p of group.particles) {
-        if (p.invMass === 0) {
-          p.xPrev.copy(p.x);
-          continue;
-        }
+        const p0 = particles[i];
+        const p1 = particles[j];
 
-        const xTemp = p.x.clone();
-        const v = p.x.clone().sub(p.xPrev).multiplyScalar(1.0 - settings.damping);
-        p.x.add(v).addScaledVector(g, dt * dt);
-        p.xPrev.copy(xTemp);
+        const r0 = p0.radius * radiusScale;
+        const r1 = p1.radius * radiusScale;
+        const minDist = r0 + r1;
+
+        const d = p0.x.clone().sub(p1.x);
+        const dist = d.length();
+        if (dist <= 1e-9 || dist >= minDist) continue;
+
+        const n = d.multiplyScalar(1 / dist);
+        const penetration = minDist - dist;
+
+        const w0 = p0.invMass;
+        const w1 = p1.invMass;
+        const wSum = w0 + w1;
+        if (wSum === 0) continue;
+
+        // Position correction
+        const corr0 = (w0 / wSum) * penetration;
+        const corr1 = (w1 / wSum) * penetration;
+
+        p0.x.addScaledVector(n, corr0);
+        p1.x.addScaledVector(n, -corr1);
       }
     }
+  }
+}
 
-    for (const group of this.groups) group.resetLambdas();
-
-    if (method === 'pd') {
-      const pdCtx = new Map();
-      for (const group of this.groups) {
-        pdCtx.set(group, createPDContext(group, dt, settings));
-      }
-
-      for (let it = 0; it < settings.iterations; it++) {
-        for (const group of this.groups) {
-          pdIteration(group, dt, settings, pdCtx.get(group));
-        }
-
-        if (settings.enableFloorCollision) {
-          projectFloorPositions(this.groups, settings.floorY);
-        }
-        if (settings.enableSelfCollision) {
-          projectSelfCollisions(this.groups, settings.selfCollisionRadiusScale);
-        }
-      }
-    } else if (method === 'vbd') {
-      const vbdCtx = new Map();
-      for (const group of this.groups) {
-        vbdCtx.set(group, createVBDContext(group, dt, settings));
-      }
-
-      for (let it = 0; it < settings.iterations; it++) {
-        for (const group of this.groups) {
-          vbdIteration(group, dt, settings, vbdCtx.get(group));
-        }
-
-        if (settings.enableFloorCollision) {
-          projectFloorPositions(this.groups, settings.floorY);
-        }
-        if (settings.enableSelfCollision) {
-          projectSelfCollisions(this.groups, settings.selfCollisionRadiusScale);
-        }
-      }
-    } else {
-      for (let it = 0; it < settings.iterations; it++) {
-        for (const group of this.groups) {
-          for (const c of group.constraints) c.project(group, dt, settings);
-        }
-
-        if (settings.enableFloorCollision) {
-          projectFloorPositions(this.groups, settings.floorY);
-        }
-        if (settings.enableSelfCollision) {
-          projectSelfCollisions(this.groups, settings.selfCollisionRadiusScale);
-        }
-      }
+export function xpbdIteration(groups, dt, settings) {
+  for (let it = 0; it < settings.iterations; it++) {
+    for (const group of groups) {
+      for (const c of group.constraints) c.project(group, dt, settings);
     }
 
     if (settings.enableFloorCollision) {
-      applyFloorVelocity(this.groups, dt, settings.floorY, settings.restitution, settings.friction);
+      projectFloorPositions(groups, settings.floorY);
+    }
+    if (settings.enableSelfCollision) {
+      projectSelfCollisions(groups, settings.selfCollisionRadiusScale);
+    }
+    if (settings.enableFloorCollision) {
+      applyFloorVelocity(groups, dt, settings.floorY, settings.restitution, settings.friction);
     }
   }
 }

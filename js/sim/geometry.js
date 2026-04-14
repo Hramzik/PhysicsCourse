@@ -1,6 +1,6 @@
 import * as THREE from '../../vendor/three/three.module.min.js';
 import { mergeVertices } from '../../vendor/three/BufferGeometryUtils.js';
-import { Particle } from './xpbd.js';
+import { Particle } from './simulation.js';
 
 export function uniqueEdgesFromIndexedGeometry(indexArray) {
   const edges = new Map();
