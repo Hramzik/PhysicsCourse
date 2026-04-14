@@ -20,7 +20,7 @@
           <select id="solverMethod">
             <option value="xpbd">XPBD (PBD)</option>
             <option value="pd">Projective Dynamics</option>
-            <option value="vbd">VBD (Vertex Block Descent)</option>
+            <option value="vbd">VBD</option>
           </select>
         </label>
 
@@ -55,23 +55,23 @@
         </label>
 
         <label>
-          Замедление времени: <span id="timeScaleValue"></span>
+          Множитель времени: <span id="timeScaleValue"></span>
           <input id="timeScale" type="range" min="0.05" max="1" step="0.05" />
         </label>
 
         <label>
-          Коэф. трения: <span id="frictionValue"></span>
+          Коэффициент трения: <span id="frictionValue"></span>
           <input id="friction" type="range" min="0" max="2" step="0.01" />
         </label>
 
         <label>
-          Упругость (restitution): <span id="restitutionValue"></span>
+          Упругость: <span id="restitutionValue"></span>
           <input id="restitution" type="range" min="0" max="1" step="0.01" />
         </label>
 
         <label class="check">
           <input id="selfCollision" type="checkbox" />
-          Самоколлизии (сферы вокруг точек)
+          Самоколлизии
         </label>
       </div>
 

@@ -93,7 +93,7 @@ import { buildScene3 } from './scenes/scene3.js';
     particleRadius: 0.05,
     timeScale: 1.0,
     friction: 0.5,
-    restitution: 0.25,
+    restitution: 1,
     enableSelfCollision: true,
 
     activeScene: 1,
