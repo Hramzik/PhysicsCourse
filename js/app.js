@@ -79,6 +79,7 @@ import { buildScene3 } from './scenes/scene3.js';
 
     reset: document.getElementById('reset'),
     pause: document.getElementById('pause'),
+    zeroVel: document.getElementById('zeroVel'),
   };
 
   const params = {
@@ -327,6 +328,14 @@ import { buildScene3 } from './scenes/scene3.js';
     ui.pause.textContent = params.paused ? 'Run' : 'Pause';
     baseStatusText = (baseStatusText || '').replace(/Запуск: .*/g, `Запуск: ${params.paused ? 'PAUSED' : 'RUN'}`);
     renderStatus();
+  });
+
+  ui.zeroVel?.addEventListener('click', () => {
+    for (const group of sim.groups) {
+      for (const p of group.particles) {
+        p.xPrev.copy(p.x);
+      }
+    }
   });
 
   // --- Mouse picking ---
