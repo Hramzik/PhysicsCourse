@@ -1,0 +1,24 @@
+{
+  "name": "physicscourse",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Hramzik/PhysicsCourse.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Hramzik/PhysicsCourse/issues"
+  },
+  "homepage": "https://github.com/Hramzik/PhysicsCourse#readme",
+  "dependencies": {
+    "three": "^0.161.0"
+  }
+}

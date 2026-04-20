@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>HW2 — Deformable body simulation</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+    <div id="viewport"></div>
+
+    <aside id="panel">
+      <h1>HW2 — Deformable body simulation</h1>
+      <p class="muted">XPBD, PD, VBD демо</p>
+
+      <div class="group">
+        <label>
+          Метод:
+          <select id="solverMethod">
+            <option value="xpbd">XPBD (PBD)</option>
+            <option value="pd">Projective Dynamics</option>
+            <option value="vbd">VBD</option>
+          </select>
+        </label>
+
+        <label>
+          Итерации: <span id="iterationsValue"></span>
+          <input id="iterations" type="range" min="1" max="40" step="1" />
+        </label>
+
+        <label>
+          Compliance (ребра): <span id="complianceEdgesValue"></span>
+          <input id="complianceEdges" type="range" min="0" max="0.0005" step="0.000001" />
+        </label>
+
+        <label>
+          Compliance (объем): <span id="complianceVolumeValue"></span>
+          <input id="complianceVolume" type="range" min="0" max="0.001" step="0.000001" />
+        </label>
+
+        <label>
+          Гравитация: <span id="gravityValue"></span>
+          <input id="gravity" type="range" min="0" max="30" step="0.1" />
+        </label>
+
+        <label>
+          Дэмпинг: <span id="dampingValue"></span>
+          <input id="damping" type="range" min="0" max="0.05" step="0.0005" />
+        </label>
+
+        <label>
+          Радиус точек: <span id="particleRadiusValue"></span>
+          <input id="particleRadius" type="range" min="0.02" max="0.12" step="0.005" />
+        </label>
+
+        <label>
+          Множитель времени: <span id="timeScaleValue"></span>
+          <input id="timeScale" type="range" min="0.05" max="1" step="0.05" />
+        </label>
+
+        <label>
+          Коэффициент трения: <span id="frictionValue"></span>
+          <input id="friction" type="range" min="0" max="2" step="0.01" />
+        </label>
+
+        <label>
+          Упругость: <span id="restitutionValue"></span>
+          <input id="restitution" type="range" min="0" max="1" step="0.01" />
+        </label>
+
+        <label class="check">
+          <input id="selfCollision" type="checkbox" />
+          Самоколлизии
+        </label>
+      </div>
+
+      <div class="row">
+        <button id="scene1">Scene 1</button>
+        <button id="scene2">Scene 2</button>
+        <button id="scene3">Scene 3</button>
+      </div>
+
+      <div class="row">
+        <button id="reset">Reset</button>
+        <button id="pause">Pause</button>
+        <button id="zeroVel">Обнулить скорости</button>
+      </div>
+
+      <div class="group">
+        <div id="status" class="status">Загрузка…</div>
+      </div>
+    </aside>
+  </div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
