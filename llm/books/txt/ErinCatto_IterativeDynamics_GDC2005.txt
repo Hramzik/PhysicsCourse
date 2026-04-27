@@ -1,0 +1,813 @@
+Iterative Dynamics with Temporal Coherence
+Erin Catto
+Crystal Dynamics
+Menlo Park, California
+ecatto@crystald.com
+June 5, 2005
+Abstract
+This article introduces an iterative constraint solver for rigid body dy-
+namics with contact. Our algorithm requires linear time and space and is
+easily expressed in vector form for fast execution on vector processors. The
+use of an iterative algorithm opens up the possibility for exploiting temporal
+coherence. A method for caching contact forces is presented that allows con-
+tact points to move from step to step and to appear and disappear. Examples
+are provided to illustrate the effectiveness of the algorithm.
+1 Introduction
+Recently, there has been much interest in using rigid body physics to enhance
+video games. Examples of rigid bodies in games are vehicles, rag dolls, cranes,
+barrels, crates, and even whole buildings. As more objects in the game world
+become physically based, realism and immersion are increased and the consumer
+has a more satisfying experience. Rigid body physics has moved from being a
+novelty to become a checklist feature in video game development.
+Developing a physics engine for games is a tremendous challenge. Many develop-
+ers do not have the know-how and/or resources to develop general purpose physics
+engines, as witnessed by the recent growth in the physics middle-ware industry.
+A physics engine must have exceptional performance, far exceeding the levels
+1
+needed for off-line animation and research. The stability of physics simulation
+is vital because without stability the game play may become frustrating, ruining
+the player’s experience. Finally, the memory specifications of the current gener-
+ation of consoles demands serious consideration of the physics engine memory
+footprint and cache usage.
+Fortunately, the performance and space requirements can be balanced by low ac-
+curacy requirements. As long as the motion is visually plausible, the physics pro-
+grammer is free to modify the equations of motion and to approximate the contact
+geometry. Furthermore, the chosen model does not need to be solved to high
+precision. As long as stability is maintained, numerical accuracy has secondary
+importance.
+Designing a physics engine for games is an exercise in cost-benefit analysis when
+considering collision detection methods, the form of the equations of motion, and
+the solution techniques. In a high performance engine, these design aspects are
+usually interdependent. For example, it may advantageous to form the equations
+of motion such that their solution may be obtained rapidly. Thus, standard models
+of inertia and friction can be placed on the workbench to be retooled for perfor-
+mance and stability.
+Stability can also be enhanced by using authoring practices that recognize the lim-
+itations of the physics engine. For example, a high performance engine typically
+has trouble dealing with interacting bodies that have a large discrepancy in mass.
+Typically, mass ratios must be less than an order of magnitude. This limitation can
+often be incorporated into design practices without sacrificing game play quality.
+In this article we describe algorithms to implement rigid body physics with contact
+and friction using only linear time and space. Compared to previous approaches,
+these algorithms are relatively simple to understand and implement.
+2 Previous Work
+Modeling choices have a profound effect on the ability to solve the contact prob-
+lem efficiently and robustly. We wish to avoid the NP-hard problems faced by
+Baraff [2]. Our model has more in common with Anitescu [1] because it is a time-
+stepping scheme. The formulation follows Smith [13]; it is velocity based and
+uses an approximate friction model.
+2
+Other simulation systems in recent years have approached the contact and con-
+straint problem from a different angle. Guendelman [7] uses impulses to prevent
+penetration. First a tentative integration step is taken and then overlap is mea-
+sured. Impulses are then applied sequentially at the original configuration until
+the contacts are separating. Jakobsen [9] uses a particle model with distance con-
+straints. At each time step the particles are allowed to fall under the influence of
+gravity. After the time step, the algorithm loops over all the constraints. For each
+distance constraint, the positions of the two particles are adjusted to satisfy the
+constraint. Since this breaks other constraints, several iterations are used.
+In contrast, the system we present in this paper is based on constraint forces and
+rigid bodies. Some advantages of this approach are:
+• Penetration is handled, improving robustness.
+• Various joints types, such as revolute and prismatic joints, are straight for-
+ward to model and incorporate.
+• Joint reactions are available for game logic, such as breakable joints and
+triggers.
+• Authoring is relatively easy due to the use of rigid bodies.
+• Joints and contacts are handled in the same way, simplifying the code.
+3 Constrained Dynamics Model
+3.1 Kinematics
+Consider a three-dimensional rigid body with position x and quaternion q. We
+assume the center of mass is located at x. We often use the rotation matrix R
+which can be computed from q as needed [5]. The linear velocity is v and the
+angular velocity is ω. The position terms are related to the velocity terms by
+kinematic differential equations [5].
+˙x = v (1)
+˙q = 1
+2ω ∗ q (2)
+3
+The overhead dot denotes differentiation with respect to time and ∗ denotes quater-
+nion multiplication (ω is treated as a quaternion with a zero scalar part).
+For a system of n bodies, the linear and angular velocities are stacked in a 6n-by-1
+column vector V .
+V =
+
+
+
+
+
+
+
+v1
+ω1
+...
+vn
+ωn
+
+
+
+
+
+
+
+(3)
+3.2 Constraints
+Our system allows for pairwise constraints between rigid bodies. There are cases
+where constraints involve more than two bodies, such as gears on moving bodies,
+but these situations are uncommon. Furthermore, some important performance
+and memory optimizations become possible by restricting constraints to be pair-
+wise.
+A single position constraint Ck is represented abstractly as a scalar function of x
+and q for two bodies i and j.
+Ck(xi, qi, x j, q j) = 0 (4)
+The constraints for a system of rigid bodies are collected in an s-by-1 column
+vector C, where s is the number of constraints.
+The time derivative of C yields the velocity constraint vector. By the chain rule
+of differentiation, the velocity constraint is guaranteed to be linear in velocity.1
+Therefore, ˙C = JV = 0 (5)
+where J is the s-by-6n Jacobian.
+1This is true because ˙q is a linear function of ω, as seen in equation (2).
+4
+x2
+x1 r1 r2
+p1 p2Figure 1: Distance constraint between points p1 and p2, which are fixed bodies 1
+and 2, respectively.
+3.3 Constraint Forces
+Each constraint has an internal reaction force fc and reaction torque τc. For a
+system of n bodies these are collected in the 6n-by-1 column vector Fc:
+Fc =
+
+
+
+
+
+
+
+fc1
+τc1
+...
+fcn
+τcn
+
+
+
+
+
+
+
+(6)
+Notice that the velocity constraint (5) states that the admissible velocity V is or-
+thogonal to the rows of J. Constraint forces do no work, so they must also be
+orthogonal to V . Therefore,
+Fc = JT λ (7)
+where λ is a vector of s undetermined multipliers. These multipliers represent the
+signed magnitudes of the constraint forces.
+3.4 Computing the Jacobian
+The constraint vector C is an unordered column array of all the position constraints
+in the model, including contacts, joints, etc. Each element Ck is a single constraint
+equation governing some aspect of the motion. Usually Ck can be determined by
+an analysis of the constraint geometry.
+5
+For example, the distance constraint shown in Figure 1 acts between two rigid
+bodies. The constraint equation Cdist measures the difference between the actual
+distance and the desired distance L.
+Cdist = 1
+2
+[(p2 − p1)2 − L2] (8)
+When Cdist = 0, the distance between p1 and p2 is equal to L. To determine the
+Jacobian, we differentiate Cdist with respect to time.
+˙Cdist = d · (v2 + ω2 × r2 − v1 − ω1 × r1) (9)
+where d = p2 − p1. Through algebraic manipulation and use of the vector identity
+A · B ×C = B ·C × A, the velocities can be isolated.
+˙Cdist = ( −dT −(r1 × d)T dT (r2 × d)T )
+
+
+
+
+v1
+ω1
+v2
+ω2
+
+
+
+ (10)
+Now we can simply write the Jacobian by inspection.
+J = ( −dT −(r1 × d)T dT (r2 × d)T ) (11)
+The preceding example gives a recipe for computing the Jacobian.
+1. Determine each constraint equation as a function of body positions and ro-
+tations.
+2. Differentiate the constraint equation with respect to time.
+3. Identify the coefficient matrix of V . This matrix is J.
+This process is performed off-line for each type of constraint. The resulting sys-
+tem of constraint equations can be assembled in an object-oriented fashion. See
+Smith [12] and Shabana [11] for more details.
+Often steps 1 and 2 can be skipped by considering the constraint directly at the
+velocity level. It is still useful to form constraints at the position level and dif-
+ferentiate them to ensure the velocity constraints are correct. Furthermore, it is
+useful to use the position constraint for dealing with constraint drift (discussed
+below).
+6
+Algorithm 1 Compute ˙C = JV
+for i = 1 to s do
+b1 = Jmap(i, 1)
+b2 = Jmap(i, 2)
+sum = 0
+if b1 > 0 then
+sum = sum + Jsp(i, 1)V (b1)
+end if
+sum = sum + Jsp(i, 2)V (b2)
+˙C(i) = sum
+end for
+In general, the Jacobian is s-by-6n for s constraints and n bodies. Since we are
+considering only pairwise constraints, each row of J has at most, two nonzero
+blocks of length six (three scalars for position and three scalars for rotation). Thus,
+for s constraints, we can store J as an s-by-12 array Jsp.
+Jsp =
+
+
+
+J11 J12
+... ...
+Js1 Js2
+
+
+ (12)
+Each block Ji j is a row vector of length 6. The row index i denotes the constraint
+number and column index j is either 1 or 2, denoting the first and second body
+involved in the constraint.
+The sparse representation Jsp is combined with the s-by-2 body map Jmap.
+Jmap =
+
+
+
+b11 b12
+... ...
+bs1 bs2
+
+
+ (13)
+Each bi j is the index of a rigid body. By convention, if a constraint is between
+a single rigid body and ground, then bi1 = 0 and the corresponding Ji1 is zero.
+Using Jsp and Jmap, the original Jacobian J can be assembled.
+Using Jsp and Jmap, we can compute the products JV and JT λ in O(s + n) time.
+Algorithms 1 and 2 show how this is done. In the pseudo-code some indexing
+refers to blocks. For example, V (b1) refers to the block 6-vector (vT
+b1, ωT
+b1)T . Note
+that these algorithms involve simple dot products and sums of 6-vectors. These
+operations can easily be decomposed to take advantage of SIMD hardware.
+7
+Algorithm 2 Compute Fc = JT λ
+for i = 1 to n do
+Fc(i) = 0
+end for
+for i = 1 to s do
+b1 = Jmap(i, 1)
+b2 = Jmap(i, 2)
+if b1 > 0 then
+Fc(b1) = Fc(b1) + Jsp(i, 1)λ (i)
+end if
+Fc(b2) = Fc(b2) + Jsp(i, 2)λ (i)
+end for
+3.5 Handling Inequality Constraints
+Usually constraint equations are partitioned into equality and inequality constraints.
+Examples of equality constraints are distance constraints, revolute joints, pris-
+matic joints, and many other joint types. Examples of inequality constraints are
+contact constraints and joint angle limits.
+For our purposes, all constraint equations are treated in a similar manner. For
+each constraint, a lower and upper bound on λ is specified as part of the constraint
+model.
+λ −
+i ≤ λi ≤ λ +
+i , ∀i ∈ [1, s] (14)
+An equality constraint would specify that (λ −, λ +) = (−∞, ∞), while an inequal-
+ity constraint might specify that (λ −, λ +) = (0, ∞). This approach eliminates a lot
+of bookkeeping and allows for interesting effects, such as motors with bounded
+torques.
+3.6 Constraint Bias
+Constraint forces can be made to do work by adding a bias vector ζ to equation (5).
+JV = ζ (15)
+Usually ζ is specified as a function of position and time. This allows us to support
+active constraints like motors and provides a simple method for position stabiliza-
+8
+tion, as discussed below.
+4 Contact Model
+We use a discrete model of contact that identifies a point of overlap and a normal
+vector. The model allows for penetration and uses a simple scheme to resolve any
+residual penetration. The friction model makes some fairly radical changes to the
+Coulomb model, as we will see.
+4.1 Normal Constraint
+The normal constraint is formed using the vectors shown in Figure 2. The position
+constraint Cn measures the object separation, so it is negative when the bodies
+overlap.
+Cn = (x2 + r2 − x1 − r1) · n1 (16)
+Differentiating Cn with respect to time leads to the velocity constraint.
+˙Cn = (v2 + ω2 × r2 − v1 − ω1 × r1) · n1 + (x2 + r2 − x1 − r1) · ω1 × n1 (17)
+We make the usual approximation that the penetration is small, so the second term
+may be ignored. In this case, it is unimportant which body is associated with the
+normal vector, so we drop the subscript from n1. However, our convention is that
+the normal vector always points from body 1 to body 2.
+The Jacobian is determined by separating the velocities from the other terms.
+JnV = ( −nT −(r1 × n)T nT (r2 × n)T )
+
+
+
+
+v1
+ω1
+v2
+ω2
+
+
+
+ (18)
+Note that the Jacobian is a row vector of length 12.
+The multiplier for the normal constraint is bounded so that the normal force can
+push the bodies apart, but not pull them together.
+0 ≤ λn < ∞ (19)
+9
+n1
+x1
+x2
+r2
+r1Figure 2: Normal constraint definition. The object origins are x1 and x2. The
+vectors r1 and r2 locate the contact points on bodies 1 and 2.
+4.2 Handling Penetration
+Overlap can occur for a couple reasons. First, using discrete collision detection
+means that contact is not recognized until the bodies suddenly overlap. Second,
+numerical integration of the equations of motion is usually not accurate enough to
+prevent the bodies from drifting into each other.
+A Baumgarte [3] scheme is used to push the bodies apart when they overlap.
+The velocity constraint is augmented with a feedback term proportional to the
+penetration depth.
+JnV = −βCn (20)
+The scalar β is tunable and governs the speed of penetration resolution. The
+constraint error Cn is computed using equation (16).
+The intuition for equation (20) can be established by rearranging terms. Recalling
+that ˙Cn = JnV , we have ˙Cn + βCn = 0
+This is a first order differential equation in Cn. The solution is Cn(t) = Cn(0)e−βt ,
+a decaying exponential if β > 0. Therefore the position error Cn decays more
+rapidly as β is increased. Alas, we are confined to approximate integration tech-
+niques and so β cannot be made too large.
+We now present a simplified analysis to determine the stable range of β . Consider
+10
+a rigid body which has its center of mass constrained to the point p, but the body
+may initially violate the constraint. The constraint equation is C = x − p. The
+Jacobian is the 3-by-3 identity matrix, i.e. J = E3×3. Since the center of mass
+is fully constrained, we may ignore inertia and external forces. Therefore, the
+body’s velocity is precisely v = −β (x − p). Now consider integration of x over
+the time step ∆t using the Euler rule:
+x(t + ∆t) = x(t) + ∆tv(t + ∆t)
+= x(t) − ∆tβ (x(t) − p)
+Rearranging terms leads to:
+x(t + ∆t) − p = (1 − ∆tβ )(x(t) − p)
+This is a recurrence relation on the position error and the solution after k time
+steps is:
+C(k∆t) = (1 − ∆tβ )kC(0)
+Clearly x will converge to p if and only if 0 < β < 2/∆t. If 0 < β ≤ 1/∆t then the
+position error will decay smoothly to zero. If 1/∆t < β < 2/∆t then the position
+error will decay with an oscillation.
+The stability analysis provides an upper bound of β ≤ 1/∆t for smooth decay.
+In practice, smaller values may be necessary for stability. Therefore β should be
+tuned experimentally, starting with a small value and increasing it until overlap is
+resolved at a sufficient speed.
+4.3 Friction Constraint
+Static and dynamic friction are modeled together with two constraints. Given the
+contact normal vector, two tangent unit vectors are computed, u1 and u2, such that
+u1 ×u2 = n. The friction force tries to prevent motion in the two tangent directions
+independently. We write the velocity form of the constraint directly.
+˙Cu1 = (v2 + ω2 × r2 − v1 − ω1 × r1) · u1 (21)
+˙Cu2 = (v2 + ω2 × r2 − v1 − ω1 × r1) · u2 (22)
+11
+The Jacobian is found by inspection.
+JuV =
+( −uT
+1 −(r1 × u1)T uT
+1 (r2 × u1)T
+−uT
+2 −(r1 × u2)T uT
+2 (r2 × u2)T
+)
+
+
+
+
+v1
+ω1
+v2
+ω2
+
+
+
+ (23)
+Our experience is that no position stabilization is necessary for friction constraints,
+even when an object is at rest on an incline.
+In Coulomb’s friction law, the static and dynamic friction forces have a magnitude
+that is bounded by the normal force magnitude. This creates an awkward coupling
+between the constraint multipliers. Using this relationship would complicate our
+solver and decrease robustness. Therefore, we use a simpler friction model where
+the friction force is bounded by a constant value.
+−μmcg ≤ λu1 ≤ μmcg (24)
+−μmcg ≤ λu2 ≤ μmcg (25)
+The usual friction coefficient is represented by μ (static and dynamic coefficients
+are equal). Each contact point is assigned a certain amount of mass mc. Typi-
+cally a body’s mass is divided uniformly between the current contact points. The
+acceleration of gravity is g.
+Our experience is that this friction model is sufficient for video games. Static
+friction works well. Boxes rest on slopes. Dynamic friction is also realistic. How-
+ever, box stacking friction is unrealistic because lower boxes slide just as easily as
+upper boxes. The normal force does not affect the strength of the friction.
+5 Equations of Motion
+Consider a rigid body with a scalar mass m and a 3-by-3 rotational inertia I. The
+rotational inertia is in world coordinates and is computed from the body version
+using I = RIbRT . Similarly, the inverse inertia is computed from the body version
+using I−1 = RI−1
+b RT .
+An external force fext and torque τext act on the body and are functions of time,
+position, and velocity. The constraint force fc and torque τc represent the internal
+12
+reaction forces of joints and contacts. The Newton-Euler equations of motion are:
+m ˙v = fc + fext (26)
+I ˙ω = τc + τext (27)
+Notice that we are neglecting the inertial torque ω × Iω. This term is often small,
+and when it is not small, it can lead to numerical instabilities. The absence of
+the inertial torque causes angular velocity—instead of angular momentum—to be
+conserved in bodies that are free from external and constraint torques.
+For a system of n rigid bodies, we collect the masses and rotational inertias along
+the diagonal of the mass matrix M.
+M =
+
+
+
+
+
+
+
+m1E3×3 0 . . . 0 0
+0 I1 . . . 0 0
+... ... . . . ... ...
+0 0 . . . mnE3×3 0
+0 0 . . . 0 In
+
+
+
+
+
+
+
+(28)
+Here E3×3 is the 3-by-3 identity matrix. Similarly, the external forces and torques
+are also collected into the vector Fext .
+Fext =
+
+
+
+
+
+
+
+fext1
+τext1
+...
+fextn
+τextn
+
+
+
+
+
+
+
+(29)
+As discussed above, the constraint forces for the system can be expressed as JT λ .
+This leads to the constrained equations of motion for n bodies.
+M ˙V = JT λ + Fext (30)
+JV = ζ (31)
+Notice that there are 6n + s equations and 12n + s unknowns: ˙V , V , and λ .
+13
+6 Time Stepping
+Our time stepping method supports variable time steps within the region of stabil-
+ity. However, precise repeatability requires a fixed time step. Repeatability may
+or may not be important, depending on the application.
+Consider a time step ∆t where the system velocity evolves from V 1 to V 2 (the
+superscript denotes the time step). The acceleration is approximated to first order.
+˙V ≈ V 2 −V 1
+∆t (32)
+This expression is substituted into equation (30).
+M(V 2 −V 1) = ∆t(JT λ + Fext ) (33)
+We solve for V 2 in terms of λ , then the constraint equation JV 2 = ζ is used to
+eliminate V 2, reducing the problem to a linear equation in λ .
+JBλ = η (34)
+where B = M−1JT and
+η = 1
+∆t ζ − J( 1
+∆t V 1 + M−1Fext ) (35)
+The reason for the curious factorization of the coefficient matrix into JB will be-
+come apparent in the next section. It is easy to show that B has the same sparsity
+pattern as JT , therefore we store B as Bsp and use Jmap for indexing.
+We must also consider the bound conditions on λ from equation (14). Obviously,
+the bounds on λ prevent strict equality from being achieved in equation (34).
+When a contact constraint does not achieve equality, it means that the objects are
+separating. When a friction constraint does not achieve equality, it means that
+it is sliding. Thus, each λ does as much as it can to satisfy its constraint while
+satisfying its bound conditions.
+The matrix JB is positive semi-definite. The reason for any rank deficiency is
+due to redundant constraints. If the constraints are consistent then there is a non-
+unique solution for λ . For example, a table with six legs has redundant but con-
+sistent support forces. Therefore, an infinite number of force combinations is
+possible.
+14
+Once λ is computed, equation (33) is used to compute V 2. Then the position
+variables for all bodies are updated independently using first order approximations
+of the kinematic equations (1) and (2).
+x2 = x1 + ∆tv2 (36)
+q2 = q1 + ∆t
+2 q1 ∗ ω2 (37)
+Here the superscripts represent the time step.
+Since the new velocities are used to compute the position update, our integrator
+is semi-implicit Euler. This is also known as symplectic Euler and is known to
+have stability and energy conservation properties that rival the Verlet integration
+scheme [8].
+7 Iterative Solution
+We obtain the solution of equation (34) using the Projected Gauss-Seidel (PGS)
+algorithm. This is an iterative algorithm based on matrix splitting [6]. The cost of
+each iteration is O(s), where s is the number of constraints. An iteration involves
+simple vector operations on O(s + n) data. The performance of the algorithm is
+dominated by the number of constraints and the number of iterations used.
+7.1 Gauss-Seidel
+Algorithm 3 shows the basic Gauss-Seidel method applied to an n-dimensional
+generic linear equation Ax = b. The algorithm requires an initial guess x0 for
+the unknowns. The algorithm proceeds for a number of iterations. During an
+iteration, each row of A is solved by adjusting the element of x corresponding to
+the diagonal element of A on the current row.
+Iterations can be terminated using several different criteria, such as:
+• Terminate after a fixed number of iterations.
+• Terminate when ||Ax − b|| falls below a tolerance.
+• Terminate when the maximum |∆xi| falls below a tolerance.
+15
+Algorithm 3 Approximately solve Ax = b given x0
+x = x0
+for iter = 1 to iteration limit do
+for i = 1 to n do
+∆xi =
+[
+bi − ∑n
+j=1 Ai jx j
+]
+/Aii
+xi = xi + ∆xi
+end for
+end for
+• Terminate when each |∆xi| is less than some fraction of its value in the
+previous iteration.
+For simplicity, we use a fixed number of iterations.
+7.2 Projected Gauss-Seidel
+The PGS algorithm extends the basic Gauss-Seidel algorithm to handle bounds on
+the unknowns. In our case, these are the bounds on λ from equation (14). Bounds
+are handled by simple clamping, which is surprisingly effective.
+We also modify the linear algebra of Algorithm 3 to exploit the sparsity of J and
+B. Thus, we avoid forming the s-by-s matrix JB. This is crucial for improving
+performance and reducing memory requirements.
+Algorithm 4 shows the Projected Gauss-Seidel method. For simplicity, we have
+ignored the case where b1 = 0 (indicating ground). First the algorithm creates the
+temporary vectors a and d. The vector a is initialized with the product Bλ , which
+can be computed in a fashion similar to Algorithm 2. The vector d is initialized
+with the diagonal elements of JB. Note that the elements of J, B, η, and a are
+stored as 6-vectors. Each time an increment to λi is computed, λi is clamped to its
+bounds and the actual increment is determined. With the actual increment of λi,
+the vector a is updated so that it remains equal to Bλ .
+The PGS algorithm has O(s) running time and O(s + n) storage requirements.
+According to Cottle [4], convergence is guaranteed if JB is positive definite. In
+many typical simulations JB is only positive semi-definite. Nevertheless, we have
+seen good visual and numerical results in practice.
+16
+Algorithm 4 Approximately solve JBλ = η given λ 0
+Work variables: a (6n-by-1), d (s-by-1)
+λ = λ 0
+a = Bλ
+for i = 1 to s do
+di = Jsp(i, 1) · Bsp(1, i) + Jsp(i, 2) · Bsp(2, i)
+end for
+for iter = 1 to iteration limit do
+for i = 1 to s do
+b1 = Jmap(i, 1)
+b2 = Jmap(i, 2)
+∆λi = [ηi − Jsp(i, 1) · a(b1) − Jsp(i, 2) · a(b2)] /di
+λ 0
+i = λi
+λi = max(λ −
+i , min(λ 0
+i + ∆λi, λ +
+i ))
+∆λi = λi − λ 0
+i
+a(b1) = a(b1) + ∆λiBsp(1, i)
+a(b2) = a(b2) + ∆λiBsp(2, i)
+end for
+end for
+7.3 Complementarity
+Technically speaking, we are solving a Mixed Linear Complementarity Problem
+(MLCP). Our constrained dynamics problem may be written as the MLCP:
+w = JBλ − η
+λ − ≤ λ ≤ λ +
+wi = 0 ↔ λ −
+i ≤ λi ≤ λ +
+i , ∀i
+λi = λ − ↔ wi ≥ 0, ∀i
+λi = λ + ↔ wi ≤ 0, ∀i
+where w is the constraint velocity. The first two lines are a restating of equa-
+tions (34) and (14). The last three lines are the complementarity conditions. The
+first condition states that the constraint can be satisfied as long as λ is within its
+bounds. The last two conditions state that λ will only reach its bound if the con-
+straint is violated (the constraint velocity is nonzero). There are many ways of
+analyzing and solving MLCPs. See Cottle [4] for details.
+17
+8 Contact Caching
+The PGS algorithm is iterative by design. The convergence rate can be slow,
+depending on the eigenvalues of JB. However, by caching the constraint force
+multiplier λ , we can improve the solution over several time steps, especially if
+there is temporal coherence in our simulation. Contact caching is discussed in the
+larger context of contact reduction in Moravanszky [10].
+8.1 Caching Scheme
+In a typical simulation, contact points come and go. We use a discrete approach
+to collision detection, i.e., contact points are generated without using the previous
+position or velocity. Only the current position data is used to determine overlaps
+and generate contact points. Thus we need an efficient method for storing all
+contact points and their λ values in a contact cache after each time step. And we
+need an efficient method to query the cache as new contact points are generated
+in the next time step.
+We now describe our caching scheme as shown in Algorithm 5. After each time
+step a new contact cache is created from scratch. Each collision primitive—
+sphere, box, convex polyhedron—has cache space reserved to keep track of in-
+teractions with other primitives. These interaction pairs are symmetric: primitive
+A knows that it is interacting with primitive B and primitive B knows it is inter-
+acting with primitive A. For each primitive pair, we keep a list of contact point
+entries. Each contact point entry stores λ and an identifier.
+Cache queries are performed as contact points are generated, before the points are
+passed to the PGS solver. First, the cache is queried for the interaction pair. If the
+pair is found, then each contact point entry corresponding to the pair is scanned
+and its identifier is matched to the query identifier. If a match is found, then the
+λ values are retrieved from the cache and passed to the solver. If there is a cache
+miss, then the λ values are initialized to zero.
+8.2 Contact Point Identifiers
+The contact point identifier can take several forms. Some possibilities are:
+18
+Algorithm 5 Contact caching and queries.
+while simulate = true do
+generate contact points
+for all contact points do
+query the cache for point i
+if cache hit then
+λ 0
+i = λcache
+else
+λ 0
+i = 0
+end if
+initialize contact constraint using λ 0
+i
+end for
+solve for V 2 and λ using Algorithm 4
+destroy old contact cache
+create new contact cache
+for all contact constraints do
+store λi and the contact identifier in the cache
+end for
+end while
+1. position in global coordinates
+2. position in local coordinates
+3. incident edge labels
+Position identifiers are easy to implement, but they require a tolerance and may
+lead to aliasing. In other words, a contact point may borrow λ from a neighboring
+contact point.
+Incident edge labels may be preferred over position identifiers because they pre-
+vent aliasing. Consider the case of box-box collision as shown in Figure 3. Each
+box has its edges numbered. If the collision is edge-edge then the contact identi-
+fier is combination of the two edge numbers. If the collision is face versus vertex,
+edge, or face, then the polygon for the reference face is identified. Then an inci-
+dent face on the other box is chosen to be the face that is most anti-parallel to the
+reference face. The incident face is clipped against the reference face to generate
+a set of potential contact points, see Figure 4. The separation distance is measured
+for each clipping point. Any clipping point with a non-positive separation be-
+19
+n1
+Box 2
+Box 1Figure 3: Two boxes in contact. The incident face of box 2 is clipped against the
+reference face of box 1.
+comes a contact point. During the clipping process, we keep track of which edges
+created the point. The combination of the indices of these two edges becomes the
+contact identifier.
+9 Results
+9.1 Box Stacking
+Box stacking is one of the most common tests performed on physics engines. The
+stacking problem requires the physics engine to have several capabilities that all
+perform well.
+• The collision system needs the ability to compute a contact manifold be-
+tween two boxes. The manifold can be computed from scratch each frame,
+but it should not change much if the relative position of the boxes does not
+change significantly.
+• The engine must accurately solve a large coupled system of constraints. If
+the constraint force solution is not accurate enough, the stack will fall.
+• The constraint solver needs to handle redundant constraints. For example,
+in our engine, each box is often supported by four points.
+20
+e1,1
+e1,2
+e1,3
+e1,4
+e2,1
+p(1,4)(2,1)
+p(1,3)(1,4) p(2,2)(1,3)
+p(2,1)(2,2)
+e2,2
+e2,3
+e2,4Figure 4: Polygon clipping. Each resulting vertex is identified by the labels of the
+two edges that created it, using counter-clockwise order.
+Figure 5: Without contact caching, a stack of three boxes is unstable.
+• The engine needs to compute friction forces, especially static friction. This
+is needed to prevent the boxes from sliding off of one another.
+• If the stack does fall, due to an unstable configuration or external forces, the
+boxes should come apart and slide naturally without sticking together.
+We performed a comparison of box stacking with and without contact caching.
+Otherwise, all simulation parameters were identical. Table 1 gives some details.
+Note that these parameters correspond to our internal game units, but roughly
+speaking, the box is about 70cm × 70cm × 30cm and has a mass of about 110kg,
+gravity is 9.8m/s2, and the time step corresponds to 60 frames per second. All col-
+lisions were treated as inelastic and no separate algorithms were used for collision
+impulses.
+Figure 5 shows a stack of three boxes simulated without contact caching. The
+boxes were initially separated vertically by 10 units. As the simulation progressed,
+21
+Parameter Value
+density 0.0000275
+dimensions 200 × 200 × 100
+gravity 3
+β 0.1
+μ 0.2
+time step 0.5
+PGS iterations 10
+initial separation 10
+Table 1: Box stacking test parameters.
+Figure 6: With contact caching, a stack of ten boxes is stable.
+the boxes slid and fell. Figure 6 shows a stack of ten boxes simulated with contact
+caching. The stack teetered a bit when first formed, but stabilizes and becomes
+motionless within a few seconds. No body sleeping (deactivation) or damping
+was used.
+9.2 Extreme Mass Ratios
+The PGS algorithm does have some limitations, particularly when dealing with
+extreme mass ratios. In box stacking this leads to stability problems when a heavy
+box is placed on top of a light box. We tested a stack of two boxes using the same
+parameters as before and with contact caching enabled. We steadily decreased the
+22
+Figure 7: Without contact caching and a mass ratio of 1%, the top box sinks into
+the lighter bottom box.
+density of the bottom box until the top box would fall. The stack was stable until
+the density ratio was lowered to 3%. With lower mass ratios the top box would
+bounce and slide off the bottom box.
+We tried the test with a 1% mass ratio. With contact caching, the top box slides off
+the bottom box. Without contact caching, the top box sinks into the bottom box!
+See Figure 7. On the other hand, the stack is completely stable when the light box
+is on top, with or without contact caching. This leads the the design principle:
+heavy objects can support light objects, but not vice-versa.
+10 Conclusion
+We have presented a system for modeling and solving rigid body dynamics for
+games, including contact and friction. The system requires linear time and space.
+Using contact caching, we are able to amortize the cost of computing accurate
+contact forces over several frames. The result is a system that performs well
+enough to be used on the current generation of console hardware.
+11 Acknowledgments
+The author wishes to thank Gary Snethen for his helpful feedback and stimulating
+conversations. The author would also like to thank the wonderful team at Crystal
+Dynamics for their support.
+23
+References
+[1] Mihai Anitescu and Florian A. Potra. Formulating dynamic multi-rigid-body
+contact problems with friction as solvable linear complementarity problems.
+Nonlinear Dynamics, 14:231–247, 1997.
+[2] David Baraff. Fast contact force computation for nonpenetrating rigid bod-
+ies. In Proceedings of SIGGRAPH 1994, pages 23–34, 1994.
+[3] J. Baumgarte. Stabilization of constraints and integrals of motion in dynam-
+ical systems. Computer Methods in Applied Mechanics and Engineering,
+1:1–16, 1972.
+[4] Richard W. Cottle, Jong-Shi Pang, and Richard E. Stone. The Linear Com-
+plementarity Problem. Academic Press, 1992.
+[5] David H. Eberly. Game Physics. Morgan Kaufmann, 2003.
+[6] Gene H. Golub and Charles F. Van Loan. Matrix Computations. The Johns
+Hopkins University Press, 3rd edition, 1996.
+[7] Eran Guendelman, Robert Bridson, and Ronald Fedkiw. Nonconvex rigid
+bodies with stacking. In Proceedings of SIGGRAPH 2003, pages 871–878,
+2003.
+[8] Ernst Hairer, Christian Lubich, and Gerhard Wanner. Geometric Numerical
+Integration. Springer-Verlag, 2002.
+[9] Thomas Jakobsen. Advanced character physics. In Proceedings of Game
+Developers Conference 2001, 2001.
+[10] Adam Moravanszky and Pierre Terdiman. Fast contact reduction for dy-
+namics simulation. In Game Programming Gems 4, pages 253–263. Charles
+River Media, 2004.
+[11] Ahmed A. Shabana. Computational Dynamics. John Wiley and Sons, 2nd
+edition, 2001.
+[12] Russell Smith. Constraints in rigid body dynamics. In Game Programming
+Gems 4, pages 241–251. Charles River Media, 2004.
+[13] Russell Smith. Open dynamics engine. http://www.ode.org, 2004.
+24
