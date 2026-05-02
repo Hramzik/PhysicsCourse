@@ -45,8 +45,8 @@ loadScene('part1','variant1');
 
 function animate(t){
   requestAnimationFrame(animate);
-  const dt = Math.min(1/30, 0.016) * speedFactor;
-  cameraControls.update(dt);
+  cameraControls.update(1/60);
+  const dt = 1/60 * speedFactor;
   if(currentScene && currentScene.step) currentScene.step(dt);
   rendererData.renderer.render(rendererData.scene, rendererData.camera);
 }
