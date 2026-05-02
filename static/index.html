@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Physics Demo — Part 1 Variant 1</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+    <script src="https://unpkg.com/three@0.154.0/build/three.min.js"></script>
+  </head>
+  <body>
+    <div id="app">
+      <div id="ui">
+        <div class="row">
+          <label>Part:</label>
+          <select id="part-select"></select>
+        </div>
+        <div class="row">
+          <label>Scene:</label>
+          <select id="scene-select"></select>
+        </div>
+        <div id="stats">
+          <div>Initial |L|: <span id="L0">—</span></div>
+          <div>Current |L|: <span id="Lcur">—</span></div>
+          <div>Energy: <span id="energy">—</span></div>
+        </div>
+      </div>
+      <div id="canvas-container"></div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
