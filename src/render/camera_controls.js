@@ -7,6 +7,7 @@ export class CameraControls {
     this.dragging = false;
     this.pointer = {x:0,y:0};
     this.rotationSpeed = 0.0035;
+    this.euler = new THREE.Euler().setFromQuaternion(camera.quaternion, 'YXZ');
     this._bindHandlers();
   }
 
@@ -51,16 +52,11 @@ export class CameraControls {
   }
 
   rotateCamera(dx, dy){
-    const yaw = -dx * this.rotationSpeed;
-    const pitch = -dy * this.rotationSpeed;
-    const worldUp = new THREE.Vector3(0,1,0);
-    const yawQuat = new THREE.Quaternion().setFromAxisAngle(worldUp, yaw);
-    const right = new THREE.Vector3();
-    this.camera.getWorldDirection(right);
-    right.cross(this.camera.up).normalize();
-    const pitchQuat = new THREE.Quaternion().setFromAxisAngle(right, pitch);
-    this.camera.quaternion.copy(yawQuat.multiply(this.camera.quaternion).multiply(pitchQuat));
-    this.camera.quaternion.normalize();
+    this.euler.y -= dx * this.rotationSpeed;
+    this.euler.x -= dy * this.rotationSpeed;
+    const limit = Math.PI / 2 - 0.05;
+    this.euler.x = Math.max(-limit, Math.min(limit, this.euler.x));
+    this.camera.quaternion.setFromEuler(this.euler);
   }
 
   update(dt){
