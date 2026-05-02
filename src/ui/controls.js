@@ -2,12 +2,14 @@ export class Controls{
   constructor(){
     this.partSelect = document.getElementById('part-select');
     this.sceneSelect = document.getElementById('scene-select');
+    this.integratorSelect = document.getElementById('integrator-select');
     this.speedRange = document.getElementById('speed-range');
     this.speedValue = document.getElementById('speed-value');
     this.speed = parseFloat(this.speedRange.value);
     this._cb = ()=>{};
     this.partSelect.addEventListener('change', ()=>this._onChange());
     this.sceneSelect.addEventListener('change', ()=>this._onChange());
+    this.integratorSelect.addEventListener('change', ()=>this._onChange());
     this.speedRange.addEventListener('input', ()=>{
       this.speed = parseFloat(this.speedRange.value);
       this.speedValue.textContent = `${this.speed.toFixed(1)}x`;
@@ -37,14 +39,29 @@ export class Controls{
       const opt = document.createElement('option'); opt.value=k; opt.textContent=scenes[k];
       this.sceneSelect.appendChild(opt);
     }
+    this._populateIntegrators();
     this._onChange();
+  }
+
+  setIntegrators(map){
+    this._integrators = map;
+    this._populateIntegrators();
+  }
+
+  _populateIntegrators(){
+    if(!this.integratorSelect || !this._integrators) return;
+    this.integratorSelect.innerHTML = '';
+    for(const key of Object.keys(this._integrators)){
+      const opt = document.createElement('option'); opt.value=key; opt.textContent=this._integrators[key];
+      this.integratorSelect.appendChild(opt);
+    }
   }
 
   onChange(cb){ this._cb = cb; }
 
   onReset(cb){ this._resetCb = cb; }
 
-  _onChange(){ this._cb(this.partSelect.value, this.sceneSelect.value, this.speed); }
+  _onChange(){ this._cb(this.partSelect.value, this.sceneSelect.value, this.integratorSelect.value, this.speed); }
 
   setStatsElements(statElems){
     if(!statElems){

@@ -1,8 +1,8 @@
 import { RigidBody3D } from '../engine/rigidbody3d.js';
-import { integrateInGlobalCoords } from '../engine/integrator.js';
+import { integrateInGlobalCoords, integrateInLocalCoordsNoGyro, integrateInLocalCoordsExplicitGyro } from '../engine/integrator.js';
 import { createArrow, updateArrow } from '../render/arrow_helper.js';
 
-export function loadPart1Variant1(rendererData){
+export function loadPart1Variant1(rendererData, integrator){
   const scene = rendererData.scene;
 
   const boxSize = [1,0.4,0.1];
@@ -29,9 +29,16 @@ export function loadPart1Variant1(rendererData){
   const L0 = body.angularMomentum().length();
   statElems.L0.textContent = L0.toFixed(3);
 
+  const integrators = {
+    global: integrateInGlobalCoords,
+    localNoGyro: integrateInLocalCoordsNoGyro,
+    localExplicitGyro: integrateInLocalCoordsExplicitGyro
+  };
+  const stepIntegrator = integrators[integrator] || integrateInGlobalCoords;
+
   return {
     step(dt){
-      integrateInGlobalCoords(body, dt);
+      stepIntegrator(body, dt);
       mesh.quaternion.copy(body.quaternion);
       const currentL = body.angularMomentum();
       updateArrow(currentArrow, currentL, body.position);

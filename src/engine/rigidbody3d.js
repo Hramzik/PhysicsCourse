@@ -21,6 +21,12 @@ export class RigidBody3D{
       0,iy,0,
       0,0,iz
     );
+    this.inertiaLocalInversed = new THREE.Matrix3();
+    this.inertiaLocalInversed.set(
+      1/ix,0,0,
+      0,1/iy,0,
+      0,0,1/iz
+    );
   }
 
   getRotationMatrix(q){

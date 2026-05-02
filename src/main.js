@@ -11,14 +11,16 @@ const controls = new Controls();
 let currentScene = null;
 let currentPart = 'part1';
 let currentSceneKey = 'variant1';
+let currentIntegrator = 'global';
 let speedFactor = 1;
 
-function loadScene(part, sceneKey){
+function loadScene(part, sceneKey, integrator){
   if(currentScene && currentScene.dispose) currentScene.dispose();
   currentPart = part;
   currentSceneKey = sceneKey;
+  currentIntegrator = integrator;
   if(part === 'part1' && sceneKey === 'variant1'){
-    currentScene = loadPart1Variant1(rendererData);
+    currentScene = loadPart1Variant1(rendererData, integrator);
     controls.setStatsElements(currentScene.statElems);
   } else {
     // placeholder scene (not implemented)
@@ -27,16 +29,16 @@ function loadScene(part, sceneKey){
   }
 }
 
-controls.onChange((part,scene,speed)=>{
+controls.onChange((part,scene,integrator,speed)=>{
   speedFactor = speed;
-  if(part !== currentPart || scene !== currentSceneKey){
-    loadScene(part,scene);
+  if(part !== currentPart || scene !== currentSceneKey || integrator !== currentIntegrator){
+    loadScene(part,scene,integrator);
   }
 });
 
 controls.onReset((part,scene)=>{
   speedFactor = controls.speed;
-  loadScene(part,scene);
+  loadScene(part,scene,currentIntegrator);
 });
 
 controls.setParts({
@@ -46,7 +48,13 @@ controls.setParts({
   part4: {label:'Part 4', scenes: {placeholder:'(not implemented)'}}
 });
 
-loadScene('part1','variant1');
+controls.setIntegrators({
+  global: 'Global coords',
+  localNoGyro: 'Local coords no gyro',
+  localExplicitGyro: 'Local coords explicit gyro'
+});
+
+loadScene('part1','variant1','global');
 
 function animate(t){
   requestAnimationFrame(animate);

@@ -1,4 +1,4 @@
-import { convertToQuaternion } from './utils.js';
+import { convertToQuaternion, add, scale } from './utils.js';
 
 // Semi-implicit Euler for free rigid-body rotation with constant angular momentum L
 export function integrateInGlobalCoords(body, dt){
@@ -16,4 +16,31 @@ export function integrateInGlobalCoords(body, dt){
   );
   body.quaternion.copy(delta.multiply(body.quaternion));
   body.quaternion.normalize();
+}
+
+export function integrateInLocalCoordsNoGyro(body, dt){
+  const w = body.angularVelocity;
+  const q = body.quaternion;
+
+  w.copy(w);
+
+  const wQuat = convertToQuaternion(body.angularVelocity);
+  const dq = wQuat.multiply(q);
+  q.copy(add(q, scale(dq, dt * 0.5)));
+  q.normalize();
+}
+
+export function integrateInLocalCoordsExplicitGyro(body, dt){
+  const w = body.angularVelocity;
+  const q = body.quaternion;
+
+  const Iw = w.clone().applyMatrix3(body.inertiaLocal);
+  const minusWxIw = w.clone().cross(Iw).negate();
+  const gyro = minusWxIw.applyMatrix3(body.inertiaLocalInversed).multiplyScalar(dt);
+  w.add(gyro);
+
+  const wQuat = convertToQuaternion(w);
+  const dq = wQuat.multiply(q);
+  q.copy(add(q, scale(dq, dt * 0.5)));
+  q.normalize();
 }
