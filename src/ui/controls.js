@@ -13,6 +13,10 @@ export class Controls{
       this.speedValue.textContent = `${this.speed.toFixed(1)}x`;
       this._onChange();
     });
+    this.resetButton = document.getElementById('reset-button');
+    this.resetButton.addEventListener('click', ()=>{
+      if(this._resetCb) this._resetCb(this.partSelect.value, this.sceneSelect.value);
+    });
   }
 
   setParts(map){
@@ -37,6 +41,8 @@ export class Controls{
   }
 
   onChange(cb){ this._cb = cb; }
+
+  onReset(cb){ this._resetCb = cb; }
 
   _onChange(){ this._cb(this.partSelect.value, this.sceneSelect.value, this.speed); }
 

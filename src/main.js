@@ -34,6 +34,11 @@ controls.onChange((part,scene,speed)=>{
   }
 });
 
+controls.onReset((part,scene)=>{
+  speedFactor = controls.speed;
+  loadScene(part,scene);
+});
+
 controls.setParts({
   part1: {label:'Part 1', scenes: {variant1:'Variant 1'}},
   part2: {label:'Part 2', scenes: {placeholder:'(not implemented)'}},
