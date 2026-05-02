@@ -2,9 +2,17 @@ export class Controls{
   constructor(){
     this.partSelect = document.getElementById('part-select');
     this.sceneSelect = document.getElementById('scene-select');
+    this.speedRange = document.getElementById('speed-range');
+    this.speedValue = document.getElementById('speed-value');
+    this.speed = parseFloat(this.speedRange.value);
     this._cb = ()=>{};
     this.partSelect.addEventListener('change', ()=>this._onChange());
     this.sceneSelect.addEventListener('change', ()=>this._onChange());
+    this.speedRange.addEventListener('input', ()=>{
+      this.speed = parseFloat(this.speedRange.value);
+      this.speedValue.textContent = `${this.speed.toFixed(1)}x`;
+      this._onChange();
+    });
   }
 
   setParts(map){
@@ -30,7 +38,7 @@ export class Controls{
 
   onChange(cb){ this._cb = cb; }
 
-  _onChange(){ this._cb(this.partSelect.value, this.sceneSelect.value); }
+  _onChange(){ this._cb(this.partSelect.value, this.sceneSelect.value, this.speed); }
 
   setStatsElements(statElems){
     if(!statElems){

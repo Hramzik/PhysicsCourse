@@ -7,9 +7,14 @@ const rendererData = createRenderer(container);
 const controls = new Controls();
 
 let currentScene = null;
+let currentPart = 'part1';
+let currentSceneKey = 'variant1';
+let speedFactor = 1;
 
 function loadScene(part, sceneKey){
   if(currentScene && currentScene.dispose) currentScene.dispose();
+  currentPart = part;
+  currentSceneKey = sceneKey;
   if(part === 'part1' && sceneKey === 'variant1'){
     currentScene = loadPart1Variant1(rendererData);
     controls.setStatsElements(currentScene.statElems);
@@ -20,8 +25,11 @@ function loadScene(part, sceneKey){
   }
 }
 
-controls.onChange((part,scene)=>{
-  loadScene(part,scene);
+controls.onChange((part,scene,speed)=>{
+  speedFactor = speed;
+  if(part !== currentPart || scene !== currentSceneKey){
+    loadScene(part,scene);
+  }
 });
 
 controls.setParts({
@@ -35,7 +43,7 @@ loadScene('part1','variant1');
 
 function animate(t){
   requestAnimationFrame(animate);
-  const dt = Math.min(1/30, 0.016); // fixed-ish step for demo
+  const dt = Math.min(1/30, 0.016) * speedFactor;
   if(currentScene && currentScene.step) currentScene.step(dt);
   rendererData.renderer.render(rendererData.scene, rendererData.camera);
 }
