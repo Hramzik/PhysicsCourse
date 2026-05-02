@@ -18,6 +18,9 @@ export function createRenderer(container){
   const ambient = new THREE.AmbientLight(0x404040);
   scene.add(ambient);
 
+  const yPlane = new THREE.GridHelper(20, 20, 0x666666, 0x333333);
+  scene.add(yPlane);
+
   window.addEventListener('resize', ()=>{
     const w = container.clientWidth;
     const h = container.clientHeight;
