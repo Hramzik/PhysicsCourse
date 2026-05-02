@@ -29,6 +29,7 @@ export class CameraControls {
 
     window.addEventListener('mousedown', this._onMouseDown = (e)=>{
       if(e.button !== 0) return;
+      if(e.target.closest && e.target.closest('#ui')) return;
       this.dragging = true;
       this.pointer.x = e.clientX;
       this.pointer.y = e.clientY;
