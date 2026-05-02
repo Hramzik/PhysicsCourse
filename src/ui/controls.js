@@ -5,7 +5,10 @@ export class Controls{
     this.integratorSelect = document.getElementById('integrator-select');
     this.speedRange = document.getElementById('speed-range');
     this.speedValue = document.getElementById('speed-value');
+    this.dampingRange = document.getElementById('damping-range');
+    this.dampingValue = document.getElementById('damping-value');
     this.speed = parseFloat(this.speedRange.value);
+    this.damping = parseFloat(this.dampingRange.value);
     this._cb = ()=>{};
     this.partSelect.addEventListener('change', ()=>this._onChange());
     this.sceneSelect.addEventListener('change', ()=>this._onChange());
@@ -13,6 +16,11 @@ export class Controls{
     this.speedRange.addEventListener('input', ()=>{
       this.speed = parseFloat(this.speedRange.value);
       this.speedValue.textContent = `${this.speed.toFixed(1)}x`;
+      this._onChange();
+    });
+    this.dampingRange.addEventListener('input', ()=>{
+      this.damping = parseFloat(this.dampingRange.value);
+      this.dampingValue.textContent = this.damping.toFixed(4);
       this._onChange();
     });
     this.resetButton = document.getElementById('reset-button');
@@ -61,7 +69,7 @@ export class Controls{
 
   onReset(cb){ this._resetCb = cb; }
 
-  _onChange(){ this._cb(this.partSelect.value, this.sceneSelect.value, this.integratorSelect.value, this.speed); }
+  _onChange(){ this._cb(this.partSelect.value, this.sceneSelect.value, this.integratorSelect.value, this.speed, this.damping); }
 
   setStatsElements(statElems){
     if(!statElems){
