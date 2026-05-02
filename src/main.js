@@ -1,9 +1,11 @@
 import { createRenderer } from './render/three_setup.js';
+import { CameraControls } from './render/camera_controls.js';
 import { Controls } from './ui/controls.js';
 import { loadPart1Variant1 } from './scenes/part1_variant1.js';
 
 const container = document.getElementById('canvas-container');
 const rendererData = createRenderer(container);
+const cameraControls = new CameraControls(rendererData.camera);
 const controls = new Controls();
 
 let currentScene = null;
@@ -44,6 +46,7 @@ loadScene('part1','variant1');
 function animate(t){
   requestAnimationFrame(animate);
   const dt = Math.min(1/30, 0.016) * speedFactor;
+  cameraControls.update(dt);
   if(currentScene && currentScene.step) currentScene.step(dt);
   rendererData.renderer.render(rendererData.scene, rendererData.camera);
 }
