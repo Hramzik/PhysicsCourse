@@ -23,6 +23,21 @@ export class Controls{
       this.dampingValue.textContent = this.damping.toFixed(4);
       this._onChange();
     });
+    this.resetSpeedButton = document.getElementById('reset-speed-button');
+    this.resetDampingButton = document.getElementById('reset-damping-button');
+    this.resetButton = document.getElementById('reset-button');
+    this.resetSpeedButton.addEventListener('click', ()=>{
+      this.speedRange.value = '1';
+      this.speed = 1;
+      this.speedValue.textContent = '1.0x';
+      this._onChange();
+    });
+    this.resetDampingButton.addEventListener('click', ()=>{
+      this.dampingRange.value = '0';
+      this.damping = 0;
+      this.dampingValue.textContent = '0.0000';
+      this._onChange();
+    });
     this.resetButton = document.getElementById('reset-button');
     this.resetButton.addEventListener('click', ()=>{
       if(this._resetCb) this._resetCb(this.partSelect.value, this.sceneSelect.value);
