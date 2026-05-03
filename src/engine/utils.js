@@ -11,6 +11,6 @@ export function add(q1, q2){
   );
 }
 
-export function scale(q, s){
+export function multiplyScalar(q, s){
   return new THREE.Quaternion(q.x * s, q.y * s, q.z * s, q.w * s);
 }

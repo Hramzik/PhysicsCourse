@@ -1,4 +1,4 @@
-import { convertToQuaternion, add, scale } from './utils.js';
+import { convertToQuaternion, add, multiplyScalar } from './utils.js';
 
 // Semi-implicit Euler for free rigid-body rotation with constant angular momentum L
 export function integrateInGlobalCoords(body, dt, damping){
@@ -27,7 +27,7 @@ export function integrateInLocalCoordsNoGyro(body, dt, damping){
 
   const wQuat = convertToQuaternion(w);
   const dq = wQuat.multiply(q);
-  q.copy(add(q, scale(dq, dt * 0.5)));
+  q.copy(add(q, multiplyScalar(dq, dt * 0.5)));
   q.normalize();
 
   // Damping
@@ -46,7 +46,7 @@ export function integrateInLocalCoordsExplicitGyro(body, dt, damping){
 
   const wQuat = convertToQuaternion(w);
   const dq = wQuat.multiply(q);
-  q.copy(add(q, scale(dq, dt * 0.5)));
+  q.copy(add(q, multiplyScalar(dq, dt * 0.5)));
   q.normalize();
 
   // Damping
