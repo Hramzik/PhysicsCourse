@@ -7,7 +7,7 @@ export class RigidBody3D{
     this.quaternion = quaternion ? quaternion.clone() : new THREE.Quaternion();
     this.angularVelocityLocal = new THREE.Vector3(0,0,0);
     this._computeBodyInertia();
-    this.L = this.angularMomentum();
+    this.L_start = this.getAngularMomentum();
   }
 
   _computeBodyInertia(){
@@ -55,11 +55,11 @@ export class RigidBody3D{
     const R = this.getRotationMatrix(this.quaternion);
     const Rt = new THREE.Matrix3().copy(R).transpose();
     this.angularVelocityLocal.copy(angularVelocityGlobal).applyMatrix3(Rt);
-    this.L = this.angularMomentum();
+    this.L_start = this.getAngularMomentum();
   }
 
   // angular momentum L = I_world * omega
-  angularMomentum(){
+  getAngularMomentum(){
     const Iw = this.getInertiaGlobal();
     const w = this.getAngularVelocityGlobal();
     const l = new THREE.Vector3();

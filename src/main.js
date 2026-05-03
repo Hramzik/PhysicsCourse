@@ -12,17 +12,15 @@ let currentScene = null;
 let currentPart = 'part1';
 let currentSceneKey = 'variant1';
 let currentIntegrator = 'global';
-let currentDamping = 0;
 let speedFactor = 1;
 
-function loadScene(part, sceneKey, integrator, damping){
+function loadScene(part, sceneKey, integrator){
   if(currentScene && currentScene.dispose) currentScene.dispose();
   currentPart = part;
   currentSceneKey = sceneKey;
   currentIntegrator = integrator;
-  currentDamping = damping;
   if(part === 'part1' && sceneKey === 'variant1'){
-    currentScene = loadPart1Variant1(rendererData, integrator, damping);
+    currentScene = loadPart1Variant1(rendererData, integrator);
     controls.setStatsElements(currentScene.statElems);
   } else {
     // placeholder scene (not implemented)
@@ -33,11 +31,12 @@ function loadScene(part, sceneKey, integrator, damping){
 
 controls.onChange((part,scene,integrator,speed,damping)=>{
   speedFactor = speed;
-  if(part !== currentPart || scene !== currentSceneKey || integrator !== currentIntegrator || damping !== currentDamping){
+
+  if(part !== currentPart || scene !== currentSceneKey || integrator !== currentIntegrator){
     loadScene(part,scene,integrator,damping);
-  } else {
-    currentDamping = damping;
   }
+
+  currentScene.setDamping(damping);
 });
 
 controls.onReset((part,scene)=>{

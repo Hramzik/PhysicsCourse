@@ -1,10 +1,10 @@
 import { convertToQuaternion, add, scale } from './utils.js';
 
 // Semi-implicit Euler for free rigid-body rotation with constant angular momentum L
-export function integrateInGlobalCoords(body, dt){
+export function integrateInGlobalCoords(body, dt, damping){
   const I_global = body.getInertiaGlobal();
   const I_global_inv = new THREE.Matrix3().copy(I_global).invert();
-  const w = body.L.clone().applyMatrix3(I_global_inv);
+  const w = body.L_start.clone().applyMatrix3(I_global_inv);
   body.setAngularVelocityGlobal(w);
 
   const wQuat = convertToQuaternion(w);
@@ -16,9 +16,12 @@ export function integrateInGlobalCoords(body, dt){
   );
   body.quaternion.copy(delta.multiply(body.quaternion));
   body.quaternion.normalize();
+
+  // Damping
+  body.L_start.multiplyScalar(1 - damping * dt);
 }
 
-export function integrateInLocalCoordsNoGyro(body, dt){
+export function integrateInLocalCoordsNoGyro(body, dt, damping){
   const w = body.angularVelocityLocal;
   const q = body.quaternion;
 
@@ -26,9 +29,12 @@ export function integrateInLocalCoordsNoGyro(body, dt){
   const dq = wQuat.multiply(q);
   q.copy(add(q, scale(dq, dt * 0.5)));
   q.normalize();
+
+  // Damping
+  w.multiplyScalar(1 - damping * dt);
 }
 
-export function integrateInLocalCoordsExplicitGyro(body, dt){
+export function integrateInLocalCoordsExplicitGyro(body, dt, damping){
   const w = body.angularVelocityLocal.clone();
   const q = body.quaternion;
 
@@ -42,4 +48,7 @@ export function integrateInLocalCoordsExplicitGyro(body, dt){
   const dq = wQuat.multiply(q);
   q.copy(add(q, scale(dq, dt * 0.5)));
   q.normalize();
+
+  // Damping
+  body.angularVelocityLocal.multiplyScalar(1 - damping * dt);
 }
