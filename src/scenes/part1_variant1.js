@@ -6,7 +6,8 @@ export function loadPart1Variant1(rendererData, integrator, damping){
   const scene = rendererData.scene;
 
   const boxSize = [1,0.4,0.1];
-  const body = new RigidBody3D({mass:1, size:boxSize, angularVelocity:[0, 0.1, 1.6]});
+  const body = new RigidBody3D({mass:1, size:boxSize});
+  body.setAngularVelocityGlobal(new THREE.Vector3(0, 0.1, 1.6));
   const initialL = body.angularMomentum().clone();
 
   const geom = new THREE.BoxGeometry(...boxSize);
@@ -39,12 +40,12 @@ export function loadPart1Variant1(rendererData, integrator, damping){
   return {
     step(dt){
       stepIntegrator(body, dt);
-      body.angularVelocity.multiplyScalar(1 - damping);
+      body.angularVelocityLocal.multiplyScalar(1 - damping * dt);
       mesh.quaternion.copy(body.quaternion);
       const currentL = body.angularMomentum();
       updateArrow(currentArrow, currentL, body.position);
       statElems.Lcur.textContent = currentL.length().toFixed(3);
-      const energy = 0.5 * body.angularVelocity.lengthSq() * averageInertia(body);
+      const energy = 0.5 * body.getAngularVelocityGlobal().lengthSq() * averageInertia(body);
       statElems.energy.textContent = energy.toFixed(4);
     },
     statElems,

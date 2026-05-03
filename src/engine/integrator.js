@@ -5,7 +5,7 @@ export function integrateInGlobalCoords(body, dt){
   const I_global = body.getInertiaGlobal();
   const I_global_inv = new THREE.Matrix3().copy(I_global).invert();
   const w = body.L.clone().applyMatrix3(I_global_inv);
-  body.angularVelocity.copy(w);
+  body.setAngularVelocityGlobal(w);
 
   const wQuat = convertToQuaternion(w);
   const delta = new THREE.Quaternion(
@@ -19,25 +19,24 @@ export function integrateInGlobalCoords(body, dt){
 }
 
 export function integrateInLocalCoordsNoGyro(body, dt){
-  const w = body.angularVelocity;
+  const w = body.angularVelocityLocal;
   const q = body.quaternion;
 
-  w.copy(w);
-
-  const wQuat = convertToQuaternion(body.angularVelocity);
+  const wQuat = convertToQuaternion(w);
   const dq = wQuat.multiply(q);
   q.copy(add(q, scale(dq, dt * 0.5)));
   q.normalize();
 }
 
 export function integrateInLocalCoordsExplicitGyro(body, dt){
-  const w = body.angularVelocity;
+  const w = body.angularVelocityLocal.clone();
   const q = body.quaternion;
 
   const Iw = w.clone().applyMatrix3(body.inertiaLocal);
   const minusWxIw = w.clone().cross(Iw).negate();
   const gyro = minusWxIw.applyMatrix3(body.inertiaLocalInversed).multiplyScalar(dt);
   w.add(gyro);
+  body.angularVelocityLocal.copy(w);
 
   const wQuat = convertToQuaternion(w);
   const dq = wQuat.multiply(q);

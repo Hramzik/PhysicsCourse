@@ -1,10 +1,11 @@
+// Все хранит в локальных координатах, для глобальных есть специальные методы
 export class RigidBody3D{
-  constructor({mass=1, size=[1,1,1], position=[0,0,0], quaternion=null, angularVelocity=[0,0,0]}){
+  constructor({mass=1, size=[1,1,1], position=[0,0,0], quaternion=null}={}){
     this.mass = mass;
     this.size = size.slice();
     this.position = new THREE.Vector3(...position);
     this.quaternion = quaternion ? quaternion.clone() : new THREE.Quaternion();
-    this.angularVelocity = new THREE.Vector3(...angularVelocity);
+    this.angularVelocityLocal = new THREE.Vector3(0,0,0);
     this._computeBodyInertia();
     this.L = this.angularMomentum();
   }
@@ -45,10 +46,22 @@ export class RigidBody3D{
     return inertiaGlobal;
   }
 
+  getAngularVelocityGlobal(){
+    const R = this.getRotationMatrix(this.quaternion);
+    return new THREE.Vector3().copy(this.angularVelocityLocal).applyMatrix3(R);
+  }
+
+  setAngularVelocityGlobal(angularVelocityGlobal){
+    const R = this.getRotationMatrix(this.quaternion);
+    const Rt = new THREE.Matrix3().copy(R).transpose();
+    this.angularVelocityLocal.copy(angularVelocityGlobal).applyMatrix3(Rt);
+    this.L = this.angularMomentum();
+  }
+
   // angular momentum L = I_world * omega
   angularMomentum(){
     const Iw = this.getInertiaGlobal();
-    const w = this.angularVelocity;
+    const w = this.getAngularVelocityGlobal();
     const l = new THREE.Vector3();
     l.x = Iw.elements[0]*w.x + Iw.elements[1]*w.y + Iw.elements[2]*w.z;
     l.y = Iw.elements[3]*w.x + Iw.elements[4]*w.y + Iw.elements[5]*w.z;
