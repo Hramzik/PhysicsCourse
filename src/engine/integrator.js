@@ -62,8 +62,8 @@ export function integrateInLocalCoordsImplicitGyro(body, dt, damping){
   // J(u) = I3 + dt * I^{-1} * ( [Iu]_x + [u]_x * I )
 
   // initial guess: w_n
-  const u = new THREE.Vector3(0, 0, 0);
-  // const u = w_n.clone();
+  // const u = new THREE.Vector3(0, 0, 0);
+  const u = w_n.clone();
 
   const Iu = u.clone().applyMatrix3(body.inertiaLocal);
   const uxIu = u.clone().cross(Iu); // u x (I u)
