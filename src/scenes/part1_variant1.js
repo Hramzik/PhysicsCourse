@@ -1,5 +1,5 @@
 import { RigidBody3D } from '../engine/rigidbody3d.js';
-import { integrateInGlobalCoords, integrateInLocalCoordsNoGyro, integrateInLocalCoordsExplicitGyro } from '../engine/integrator.js';
+import { integrateInGlobalCoords, integrateInLocalCoordsNoGyro, integrateInLocalCoordsExplicitGyro, integrateInLocalCoordsImplicitGyro } from '../engine/integrator.js';
 import { createArrow, updateArrow } from '../render/arrow_helper.js';
 
 export function loadPart1Variant1(rendererData, integrator){
@@ -33,7 +33,8 @@ export function loadPart1Variant1(rendererData, integrator){
   const integrators = {
     global: integrateInGlobalCoords,
     localNoGyro: integrateInLocalCoordsNoGyro,
-    localExplicitGyro: integrateInLocalCoordsExplicitGyro
+    localExplicitGyro: integrateInLocalCoordsExplicitGyro,
+    localImplicitGyro: integrateInLocalCoordsImplicitGyro
   };
   const stepIntegrator = integrators[integrator] || integrateInGlobalCoords;
   let currentDamping = 0;

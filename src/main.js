@@ -41,7 +41,7 @@ controls.onChange((part,scene,integrator,speed,damping)=>{
 
 controls.onReset((part,scene)=>{
   speedFactor = controls.speed;
-  loadScene(part,scene,currentIntegrator,currentDamping);
+  loadScene(part,scene,currentIntegrator);
 });
 
 controls.setParts({
@@ -54,7 +54,8 @@ controls.setParts({
 controls.setIntegrators({
   global: 'Global coords',
   localNoGyro: 'Local coords no gyro',
-  localExplicitGyro: 'Local coords explicit gyro'
+  localExplicitGyro: 'Local coords explicit gyro',
+  localImplicitGyro: 'Local coords implicit gyro'
 });
 
 loadScene('part1','variant1','global');
