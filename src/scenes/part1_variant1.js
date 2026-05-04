@@ -7,7 +7,7 @@ export function loadPart1Variant1(rendererData, integrator){
 
   const boxSize = [1,0.4,0.1];
   const body = new RigidBody3D({mass:1, size:boxSize});
-  body.setAngularVelocityGlobal(new THREE.Vector3(0, 0.1, 1.6));
+  body.setAngularVelocityGlobal(new THREE.Vector3(0, 1.6, 0.1));
   const initialL = body.getAngularMomentum().clone();
 
   const geom = new THREE.BoxGeometry(...boxSize);
