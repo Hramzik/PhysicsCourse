@@ -1,7 +1,7 @@
 import { createRenderer } from './render/three_setup.js';
 import { CameraControls } from './render/camera_controls.js';
 import { Controls } from './ui/controls.js';
-import { loadPart1Variant1 } from './scenes/part1_variant1.js';
+import { loadPart1Scene1 } from './scenes/part1_scene1.js';
 
 const container = document.getElementById('canvas-container');
 const rendererData = createRenderer(container);
@@ -10,7 +10,7 @@ const controls = new Controls();
 
 let currentScene = null;
 let currentPart = 'part1';
-let currentSceneKey = 'variant1';
+let currentSceneKey = 'scene1';
 let currentIntegrator = 'global';
 let speedFactor = 1;
 
@@ -19,8 +19,8 @@ function loadScene(part, sceneKey, integrator){
   currentPart = part;
   currentSceneKey = sceneKey;
   currentIntegrator = integrator;
-  if(part === 'part1' && sceneKey === 'variant1'){
-    currentScene = loadPart1Variant1(rendererData, integrator);
+  if(part === 'part1' && sceneKey === 'scene1'){
+    currentScene = loadPart1Scene1(rendererData, integrator);
     controls.setStatsElements(currentScene.statElems);
   } else {
     // placeholder scene (not implemented)
@@ -45,7 +45,7 @@ controls.onReset((part,scene)=>{
 });
 
 controls.setParts({
-  part1: {label:'Part 1', scenes: {variant1:'Variant 1'}},
+  part1: {label:'Part 1', scenes: {scene1:'Scene 1'}},
   part2: {label:'Part 2', scenes: {placeholder:'(not implemented)'}},
   part3: {label:'Part 3', scenes: {placeholder:'(not implemented)'}},
   part4: {label:'Part 4', scenes: {placeholder:'(not implemented)'}}
@@ -58,7 +58,7 @@ controls.setIntegrators({
   localImplicitGyro: 'Local coords implicit gyro'
 });
 
-loadScene('part1','variant1','global');
+loadScene('part1','scene1','global');
 
 function animate(t){
   requestAnimationFrame(animate);

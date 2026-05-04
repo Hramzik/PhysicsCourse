@@ -2,7 +2,7 @@ import { RigidBody3D } from '../engine/rigidbody3d.js';
 import { integrateInGlobalCoords, integrateInLocalCoordsNoGyro, integrateInLocalCoordsExplicitGyro, integrateInLocalCoordsImplicitGyro } from '../engine/integrator.js';
 import { createArrow, updateArrow } from '../render/arrow_helper.js';
 
-export function loadPart1Variant1(rendererData, integrator){
+export function loadPart1Scene1(rendererData, integrator){
   const scene = rendererData.scene;
 
   const boxSize = [1,0.4,0.1];
