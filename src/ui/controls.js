@@ -10,7 +10,7 @@ export class Controls{
     this.speed = parseFloat(this.speedRange.value);
     this.damping = parseFloat(this.dampingRange.value);
     this._cb = ()=>{};
-    this.partSelect.addEventListener('change', ()=>this._onChange());
+    this.partSelect.addEventListener('change', ()=>this._populateScenes());
     this.sceneSelect.addEventListener('change', ()=>this._onChange());
     this.integratorSelect.addEventListener('change', ()=>this._onChange());
     this.speedRange.addEventListener('input', ()=>{
@@ -91,6 +91,14 @@ export class Controls{
       document.getElementById('L0').textContent='—';
       document.getElementById('Lcur').textContent='—';
       document.getElementById('energy').textContent='—';
+      const springLen = document.getElementById('springLen');
+      const springForce = document.getElementById('springForce');
+      const springEnergy = document.getElementById('springEnergy');
+      const totalEnergy = document.getElementById('totalEnergy');
+      if(springLen) springLen.textContent = '—';
+      if(springForce) springForce.textContent = '—';
+      if(springEnergy) springEnergy.textContent = '—';
+      if(totalEnergy) totalEnergy.textContent = '—';
       return;
     }
   }

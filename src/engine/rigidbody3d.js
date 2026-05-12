@@ -1,11 +1,14 @@
-// Все хранит в локальных координатах, для глобальных есть специальные методы
+// Все кроме position и linearVelocity хранит в локальных координатах, для глобальных есть специальные методы
 export class RigidBody3D{
   constructor({mass=1, size=[1,1,1], position=[0,0,0], quaternion=null}={}){
     this.mass = mass;
     this.size = size.slice();
     this.position = new THREE.Vector3(...position);
     this.quaternion = quaternion ? quaternion.clone() : new THREE.Quaternion();
+    this.linearVelocity = new THREE.Vector3(0,0,0);
     this.angularVelocityLocal = new THREE.Vector3(0,0,0);
+    this.forceAccum = new THREE.Vector3(0,0,0);
+    this.torqueAccum = new THREE.Vector3(0,0,0);
     this._computeBodyInertia();
     this.L_start = this.getAngularMomentum();
   }
@@ -56,6 +59,42 @@ export class RigidBody3D{
     const Rt = new THREE.Matrix3().copy(R).transpose();
     this.angularVelocityLocal.copy(angularVelocityGlobal).applyMatrix3(Rt);
     this.L_start = this.getAngularMomentum();
+  }
+
+  clearForcesAndTorque(){
+    this.forceAccum.set(0,0,0);
+    this.torqueAccum.set(0,0,0);
+  }
+
+  addForceLocal(forceLocal){
+    this.forceAccum.add(forceLocal);
+  }
+
+  addTorqueLocal(torqueLocal){
+    this.torqueAccum.add(torqueLocal);
+  }
+
+  addForceGlobal(forceWorld){
+    const R = this.getRotationMatrix(this.quaternion);
+    const Rt = new THREE.Matrix3().copy(R).transpose();
+    const fLocal = forceWorld.clone().applyMatrix3(Rt);
+    this.addForceLocal(fLocal);
+  }
+
+  applyForceGlobalAtPointGlobal(worldPoint, forceWorld){
+    const rWorld = new THREE.Vector3().subVectors(worldPoint, this.position);
+    const torqueWorld = rWorld.clone().cross(forceWorld);
+    const R = this.getRotationMatrix(this.quaternion);
+    const Rt = new THREE.Matrix3().copy(R).transpose();
+    const fLocal = forceWorld.clone().applyMatrix3(Rt);
+    const tauLocal = torqueWorld.clone().applyMatrix3(Rt);
+    this.addForceLocal(fLocal);
+    this.addTorqueLocal(tauLocal);
+  }
+
+  getForceGlobal(){
+    const R = this.getRotationMatrix(this.quaternion);
+    return this.forceAccum.clone().applyMatrix3(R);
   }
 
   // angular momentum L = I_world * omega

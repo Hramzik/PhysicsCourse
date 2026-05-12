@@ -2,6 +2,7 @@ import { createRenderer } from './render/three_setup.js';
 import { CameraControls } from './render/camera_controls.js';
 import { Controls } from './ui/controls.js';
 import { loadPart1Scene1 } from './scenes/part1_scene1.js';
+import { loadPart2Scene1SpringForce } from './scenes/part2_scene1_spring_force.js';
 
 const container = document.getElementById('canvas-container');
 const rendererData = createRenderer(container);
@@ -19,8 +20,21 @@ function loadScene(part, sceneKey, integrator){
   currentPart = part;
   currentSceneKey = sceneKey;
   currentIntegrator = integrator;
+  // update UI selects to reflect programmatic scene change
+  try{
+    if(controls){
+      controls.partSelect.value = part;
+      controls._populateScenes();
+      controls.sceneSelect.value = sceneKey;
+      controls.integratorSelect.value = integrator;
+    }
+  }catch(e){ /* ignore UI sync errors */ }
+
   if(part === 'part1' && sceneKey === 'scene1'){
     currentScene = loadPart1Scene1(rendererData, integrator);
+    controls.setStatsElements(currentScene.statElems);
+  } else if(part === 'part2' && sceneKey === 'springForce'){
+    currentScene = loadPart2Scene1SpringForce(rendererData);
     controls.setStatsElements(currentScene.statElems);
   } else {
     // placeholder scene (not implemented)
@@ -46,7 +60,7 @@ controls.onReset((part,scene)=>{
 
 controls.setParts({
   part1: {label:'Part 1', scenes: {scene1:'Scene 1'}},
-  part2: {label:'Part 2', scenes: {placeholder:'(not implemented)'}},
+  part2: {label:'Part 2', scenes: {springForce:'Spring (external force)'}},
   part3: {label:'Part 3', scenes: {placeholder:'(not implemented)'}},
   part4: {label:'Part 4', scenes: {placeholder:'(not implemented)'}}
 });

@@ -29,7 +29,7 @@
         </div>
         <div class="row">
           <label for="damping-range">Damping: <span id="damping-value">0.00</span></label>
-          <input id="damping-range" type="range" min="0" max="0.1" step="0.0001" value="0" />
+          <input id="damping-range" type="range" min="0" max="0.9" step="0.0001" value="0" />
           <button id="reset-damping-button" type="button">Reset</button>
         </div>
         <div class="row">
@@ -39,6 +39,10 @@
           <div>Initial |L|: <span id="L0">—</span></div>
           <div>Current |L|: <span id="Lcur">—</span></div>
           <div>Energy: <span id="energy">—</span></div>
+          <div>Spring length: <span id="springLen">—</span></div>
+          <div>Spring force: <span id="springForce">—</span></div>
+          <div>Spring energy: <span id="springEnergy">—</span></div>
+          <div>Total energy: <span id="totalEnergy">—</span></div>
         </div>
       </div>
       <div id="canvas-container"></div>

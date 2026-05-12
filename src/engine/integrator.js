@@ -89,9 +89,61 @@ export function integrateInLocalCoordsImplicitGyro(body, dt, damping){
 
   const wNew = body.angularVelocityLocal;
   const wQuat = convertToQuaternion(wNew);
-  const qxW = wQuat.multiply(q);
-  q.copy(add(q, multiplyScalar(qxW, dt * 0.5)));
+  const wxq = wQuat.multiply(q);
+  q.copy(add(q, multiplyScalar(wxq, dt * 0.5)));
   q.normalize();
+
+  // Damping
+  body.angularVelocityLocal.multiplyScalar(1 - damping * dt);
+}
+
+// Symplectic Euler with external forces and implicit gyro term
+// I dont know why it looks so bad, all i did was add torque term
+export function integrateRigidBodyWithForcesImplicitGyro(body, dt, damping){
+  if(body.mass > 0){
+    const accelGlobal = body.getForceGlobal().multiplyScalar(1 / body.mass);
+    body.linearVelocity.addScaledVector(accelGlobal, dt);
+    if(damping){
+      body.linearVelocity.multiplyScalar(1 - damping * dt);
+    }
+    body.position.addScaledVector(body.linearVelocity, dt);
+  }
+
+  const w_n = body.angularVelocityLocal.clone();
+
+  // Single Newton--Raphson iteration for u = w_{n+1}:
+  // F(u) = u - w_n - dt * I^{-1} * tau + dt * I^{-1} * (u x (I u)) = 0
+  // J(u) = I3 + dt * I^{-1} * ( [Iu]_x + [u]_x * I )
+  // (J(u) is the same)
+
+  const u = w_n.clone();
+
+  const Iu = u.clone().applyMatrix3(body.inertiaLocal);
+  const uxIu = u.clone().cross(Iu);
+  const IinvTau = body.torqueAccum.clone().applyMatrix3(body.inertiaLocalInversed).multiplyScalar(dt);
+
+  const F = u.clone()
+    .sub(w_n)
+    .sub(IinvTau)
+    .add(uxIu.clone().applyMatrix3(body.inertiaLocalInversed).multiplyScalar(dt));
+
+  const skewIu = skew(Iu);
+  const skewU = skew(u);
+  const skewUxI = skewU.clone().multiply(body.inertiaLocal);
+  const skewIuPlusSkewUxI = addMatrix3(skewIu, skewUxI);
+  const rightSumPart = multiplyMatrix3Scalar(body.inertiaLocalInversed.clone().multiply(skewIuPlusSkewUxI), dt);
+  const J = addMatrix3(identityMatrix3(), rightSumPart);
+  const Jinv = new THREE.Matrix3().copy(J).invert();
+
+  const JxF = F.clone().applyMatrix3(Jinv);
+  const u1 = u.clone().sub(JxF);
+  body.angularVelocityLocal.copy(u1);
+
+  const wNew = body.angularVelocityLocal;
+  const wQuat = convertToQuaternion(wNew);
+  const wxq = wQuat.multiply(body.quaternion);
+  body.quaternion.copy(add(body.quaternion, multiplyScalar(wxq, dt * 0.5)));
+  body.quaternion.normalize();
 
   // Damping
   body.angularVelocityLocal.multiplyScalar(1 - damping * dt);
