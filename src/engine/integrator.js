@@ -123,7 +123,7 @@ export function integrateRigidBodyWithForcesImplicitGyro(body, dt, damping){
     .sub(dtxIinvTau)
     .add(uxIu.clone().applyMatrix3(body.inertiaLocalInversed).multiplyScalar(dt));
 
-  const skewIu = skew(Iu);
+  const skewIu = multiplyMatrix3Scalar(skew(Iu), -1);
   const skewU = skew(u);
   const skewUxI = skewU.clone().multiply(body.inertiaLocal);
   const skewIuPlusSkewUxI = addMatrix3(skewIu, skewUxI);

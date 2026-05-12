@@ -63,7 +63,15 @@ export class Controls{
       this.sceneSelect.appendChild(opt);
     }
     this._populateIntegrators();
+    this._updateIntegratorVisibility(part);
     this._onChange();
+  }
+
+  _updateIntegratorVisibility(part){
+    const integratorRow = document.getElementById('integrator-row');
+    if(integratorRow){
+      integratorRow.style.display = (part === 'part2') ? 'none' : 'block';
+    }
   }
 
   setIntegrators(map){

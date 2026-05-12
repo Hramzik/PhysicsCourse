@@ -8,8 +8,8 @@ export function loadPart2Scene1SpringForce(rendererData){
   const boxSize = [1, 0.4, 0.2];
   const body = new RigidBody3D({mass:1, size:boxSize, position:[0, 0.2, 0]});
   // body.inertiaLocal = multiplyMatrix3Scalar(body.inertiaLocal, 100);
-  body.setAngularVelocityGlobal(new THREE.Vector3(0, 0.4, 0.1));
-  body.linearVelocity.set(0.6, 0, 0.2);
+  // body.setAngularVelocityGlobal(new THREE.Vector3(0, 0.4, 0.1));
+  // body.linearVelocity.set(0.6, 0, 0.2);
 
   const geom = new THREE.BoxGeometry(...boxSize);
   const mat = new THREE.MeshStandardMaterial({color:0x88ffaa});
