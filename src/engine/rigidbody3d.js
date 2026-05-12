@@ -8,7 +8,7 @@ export class RigidBody3D{
     this.linearVelocity = new THREE.Vector3(0,0,0);
     this.angularVelocityLocal = new THREE.Vector3(0,0,0);
     this.forceAccum = new THREE.Vector3(0,0,0);
-    this.torqueAccum = new THREE.Vector3(0,0,0);
+    this.torqueLocal = new THREE.Vector3(0,0,0);
     this._computeBodyInertia();
     this.L_start = this.getAngularMomentum();
   }
@@ -63,7 +63,7 @@ export class RigidBody3D{
 
   clearForcesAndTorque(){
     this.forceAccum.set(0,0,0);
-    this.torqueAccum.set(0,0,0);
+    this.torqueLocal.set(0,0,0);
   }
 
   addForceLocal(forceLocal){
@@ -71,7 +71,7 @@ export class RigidBody3D{
   }
 
   addTorqueLocal(torqueLocal){
-    this.torqueAccum.add(torqueLocal);
+    this.torqueLocal.add(torqueLocal);
   }
 
   addForceGlobal(forceWorld){

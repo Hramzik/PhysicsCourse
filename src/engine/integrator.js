@@ -100,18 +100,14 @@ export function integrateInLocalCoordsImplicitGyro(body, dt, damping){
 // Symplectic Euler with external forces and implicit gyro term
 // I dont know why it looks so bad, all i did was add torque term
 export function integrateRigidBodyWithForcesImplicitGyro(body, dt, damping){
-  if(body.mass > 0){
-    const accelGlobal = body.getForceGlobal().multiplyScalar(1 / body.mass);
-    body.linearVelocity.addScaledVector(accelGlobal, dt);
-    if(damping){
-      body.linearVelocity.multiplyScalar(1 - damping * dt);
-    }
-    body.position.addScaledVector(body.linearVelocity, dt);
-  }
+  const accelGlobal = body.getForceGlobal().multiplyScalar(1 / body.mass);
+  body.linearVelocity.addScaledVector(accelGlobal, dt);
+  body.linearVelocity.multiplyScalar(1 - damping * dt);
+  body.position.addScaledVector(body.linearVelocity, dt);
 
   const w_n = body.angularVelocityLocal.clone();
 
-  // Single Newton--Raphson iteration for u = w_{n+1}:
+  // Single Newton-Raphson iteration for u = w_{n+1}:
   // F(u) = u - w_n - dt * I^{-1} * tau + dt * I^{-1} * (u x (I u)) = 0
   // J(u) = I3 + dt * I^{-1} * ( [Iu]_x + [u]_x * I )
   // (J(u) is the same)
@@ -120,11 +116,11 @@ export function integrateRigidBodyWithForcesImplicitGyro(body, dt, damping){
 
   const Iu = u.clone().applyMatrix3(body.inertiaLocal);
   const uxIu = u.clone().cross(Iu);
-  const IinvTau = body.torqueAccum.clone().applyMatrix3(body.inertiaLocalInversed).multiplyScalar(dt);
+  const dtxIinvTau = body.torqueLocal.clone().applyMatrix3(body.inertiaLocalInversed).multiplyScalar(dt);
 
   const F = u.clone()
     .sub(w_n)
-    .sub(IinvTau)
+    .sub(dtxIinvTau)
     .add(uxIu.clone().applyMatrix3(body.inertiaLocalInversed).multiplyScalar(dt));
 
   const skewIu = skew(Iu);
@@ -139,8 +135,7 @@ export function integrateRigidBodyWithForcesImplicitGyro(body, dt, damping){
   const u1 = u.clone().sub(JxF);
   body.angularVelocityLocal.copy(u1);
 
-  const wNew = body.angularVelocityLocal;
-  const wQuat = convertToQuaternion(wNew);
+  const wQuat = convertToQuaternion(body.angularVelocityLocal);
   const wxq = wQuat.multiply(body.quaternion);
   body.quaternion.copy(add(body.quaternion, multiplyScalar(wxq, dt * 0.5)));
   body.quaternion.normalize();
