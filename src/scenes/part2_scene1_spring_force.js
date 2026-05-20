@@ -23,7 +23,7 @@ export function loadPart2Scene1SpringForce(rendererData){
   anchorMesh.position.copy(anchorWorld);
   scene.add(anchorMesh);
 
-  const localAttach = new THREE.Vector3(0.5, 0.2, 0.1);
+  const localAttach = new THREE.Vector3(0.0, 0.2, 0.1);
   const restLength = 1.1;
   const k = 18;
   const c = 1.8;
