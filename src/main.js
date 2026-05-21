@@ -6,6 +6,7 @@ import { loadPart2Scene1Spring } from './scenes/part2_scene1_spring.js';
 import { loadPart2Scene2TwoBodies } from './scenes/part2_scene2_two_bodies.js';
 import { loadPart3Scene1Boxes } from './scenes/part3_scene1_boxes.js';
 import { loadPart3Scene2Many } from './scenes/part3_scene2_many.js';
+import { loadPart4Scene1Many } from './scenes/part4_scene1_many.js';
 
 const container = document.getElementById('canvas-container');
 const rendererData = createRenderer(container);
@@ -22,7 +23,8 @@ let speedFactor = 1;
 // Default method per (part, scene)
 const DEFAULT_METHODS = {
   part2: { twoBodies: 'xpbd' },
-  part3: { boxes: 'xpbd', many: 'xpbd' }
+  part3: { boxes: 'xpbd', many: 'xpbd' },
+  part4: { many: 'sap' }
 };
 
 // Default damping per (part, scene, method). When a scene is loaded with a
@@ -40,6 +42,9 @@ const METHOD_DEFAULT_DAMPING = {
   part3: {
     boxes: { xpbd: 0.05, si: 0.05 },
     many:  { xpbd: 0.05 }
+  },
+  part4: {
+    many: { sap: 0.05, lbvh: 0.05 }
   }
 };
 
@@ -95,6 +100,9 @@ function loadScene(part, sceneKey, integrator, method){
     controls.setStatsElements(currentScene.statElems);
   } else if(part === 'part3' && sceneKey === 'many'){
     currentScene = loadPart3Scene2Many(rendererData, method);
+    controls.setStatsElements(currentScene.statElems);
+  } else if(part === 'part4' && sceneKey === 'many'){
+    currentScene = loadPart4Scene1Many(rendererData, method);
     controls.setStatsElements(currentScene.statElems);
   } else {
     currentScene = null;
@@ -176,6 +184,12 @@ controls.setMethods({
     many: {
       xpbd: 'XPBD'
     }
+  },
+  part4: {
+    many: {
+      sap:  'Sweep and Prune',
+      lbvh: 'LBVH'
+    }
   }
 });
 
@@ -183,7 +197,7 @@ controls.setParts({
   part1: {label:'Part 1', scenes: {scene1:'Scene 1'}},
   part2: {label:'Part 2', scenes: {spring:'Spring', twoBodies:'Two bodies (distance)'}},
   part3: {label:'Part 3', scenes: {boxes:'10 boxes (gravity)', many:'~1000 cubes (spatial grid)'}},
-  part4: {label:'Part 4', scenes: {placeholder:'(not implemented)'}}
+  part4: {label:'Part 4', scenes: {many:'~400 varied boxes (SAP vs LBVH)'}}
 });
 
 loadScene('part1', 'scene1', 'global', null);
