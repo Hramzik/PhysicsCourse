@@ -205,26 +205,59 @@ export function applyDamping(body, dt, damping) {
 // For each substep:
 //   1) save prev pose, apply gravity, predict pose
 //   2) re-detect contacts
-//   3) Normal position pass: dλ_n = penetration / K (one-sided, λ_n ≥ 0)
-//   4) Static-friction position pass:
-//        Δp     = (p_A − p_A_prev) − (p_B − p_B_prev)
-//        Δp_t   = Δp − (Δp·n) n
-//        cone   = μ_s · λ_n
-//        Tentatively apply Δx = −Δp_t. If |λ_t_new| > cone, skip (slipping).
-//   5) Derive velocities from pose delta
-//   6) Dynamic-friction velocity pass:
-//        v_t   = v_rel − (v_rel·n) n
-//        Δv    = −(v_t / |v_t|) · min(h·μ_d·|f_n|, |v_t|),  f_n = λ_n / h²
-//        apply tangential impulse  J = m_eff_t · Δv
-//   7) damping
+//   3) Iterative position projection (positionIterations iters):
+//      Each iteration, for each contact:
+//        a) Recompute the *current* penetration from world-space anchor points
+//           that were captured right after detection:
+//             pA_now = pos_A + R(q_A)·rA_local
+//             pB_now = pos_B + R(q_B)·rB_local  (or null for static)
+//             gap    = (pA_now − pA_anchor) · n  − (pB_now − pB_anchor) · n
+//             C      = penetration_init + gap   (≤ 0 means separated)
+//           This is essential for multi-point manifolds: contact #1 reduces
+//           penetration, contact #2 sees the smaller residual, and so on —
+//           Gauss-Seidel convergence. Without it, N coplanar contacts each
+//           "see" the full penetration and we get N× over-correction.
+//        b) Apply normal correction dλ_n = C / K (clamped, λ_n ≥ 0).
+//        c) Static-friction position sub-pass (PBDBodies §3.5).
+//   4) Derive velocities from pose delta (substep-level).
+//   5) Velocity pass: restitution gate + dynamic friction (§3.6).
+//   6) Damping.
 //
 // detectContacts(bodies, planes) returns a fresh array of Contact objects.
+// Stick threshold (m/s) — below this tangential speed we zero v_t completely
+// to avoid micro-jitter in resting stacks. Configurable per-call via options.vStick.
+const V_STICK_DEFAULT = 0.01;
+let V_STICK = V_STICK_DEFAULT;
+
+// Restitution gate (m/s) — below this *separating* normal speed we zero v_n.
+// Resolves the "bodies never settle" issue in stacks: the position-projection
+// pass pushes overlapping bodies apart by `penetration/h` per substep, which
+// is mathematically equivalent to giving them a separating normal velocity.
+// Even with restitution = 0, this small positive v_n re-opens a gap, gravity
+// closes it, and the cycle repeats — the body floats. By snapping the
+// post-correction v_n to zero when it is below ~2·|g|·h, we suppress this
+// numerical bounce while still allowing genuine impacts to rebound (or, with
+// restitution = 0, to dissipate normally through the velocity solver).
+const V_REST_GATE_DEFAULT = 0.5;
+let V_REST_GATE = V_REST_GATE_DEFAULT;
+
+// Max linear position correction per single iteration (m). Protects against
+// huge λ-spikes when penetration is enormous (a body teleported into another).
+// Acts as Fix B — bounds dλ_n so the resulting linear displacement of the
+// lighter body never exceeds POS_MAX_MOVE_PER_ITER.
+const POS_MAX_MOVE_DEFAULT = 0.2;
+
 export function xpbdSolveContacts(bodies, planes, detectContacts, dt, options = {}) {
   const substeps = options.substeps || 10;
+  const positionIterations = options.positionIterations || 4;
+  const posRelaxation = options.posRelaxation != null ? options.posRelaxation : 1.0;
+  const posMaxMove = options.posMaxMove != null ? options.posMaxMove : POS_MAX_MOVE_DEFAULT;
   const gravity = options.gravity || new THREE.Vector3(0, -9.8, 0);
   const damping = options.damping || 0;
   const muS = options.muS != null ? options.muS : 0;
   const muD = options.muD != null ? options.muD : 0;
+  V_STICK = options.vStick != null ? options.vStick : V_STICK_DEFAULT;
+  V_REST_GATE = options.vRestGate != null ? options.vRestGate : V_REST_GATE_DEFAULT;
   const h = dt / substeps;
   const invH = 1 / h;
   const invH2 = 1 / (h * h);
@@ -248,65 +281,99 @@ export function xpbdSolveContacts(bodies, planes, detectContacts, dt, options = 
     const contacts = detectContacts(bodies, planes);
     totalContacts += contacts.length;
 
-    // 3. Normal position projection (one-sided)
+    // ── Cache per-contact data: effectiveMass (rotation-dependent, but inertia
+    // changes negligibly over one substep) and world anchor points at the
+    // post-detection pose. Anchors are needed to re-evaluate penetration each
+    // iteration (without them, N coplanar contacts would each correct the full
+    // initial penetration → N× over-correction → bodies launch upward).
+    const ctxs = new Array(contacts.length);
+    const anchorsA = new Array(contacts.length);
+    const anchorsB = new Array(contacts.length);
     for (let c = 0; c < contacts.length; c++) {
       const contact = contacts[c];
-      const ctx = effectiveMass(contact);
-      if (ctx.K < 1e-9) continue;
-      let dlambda = contact.penetration / ctx.K;
-      if (contact.lambdaAcc + dlambda < 0) dlambda = -contact.lambdaAcc;
-      contact.lambdaAcc += dlambda;
-      applyContactPositionCorrection(contact, ctx, dlambda);
+      ctxs[c] = effectiveMass(contact);
+      anchorsA[c] = contact.bodyA.position.clone()
+        .add(rotateVectorByQuat(contact.rA_local, contact.bodyA.quaternion));
+      if (contact.bodyB) {
+        anchorsB[c] = contact.bodyB.position.clone()
+          .add(rotateVectorByQuat(contact.rB_local, contact.bodyB.quaternion));
+      } else {
+        anchorsB[c] = null;
+      }
+    }
 
-      // 4. Static friction position pass (PBDBodies §3.5)
-      if (muS > 0 && contact.lambdaAcc > 0) {
-        // p_A_world  = pos_A_now + R_A_now · rA_local
-        // p_A_prev   = pos_A_prev + R_A_prev · rA_local
+    // 3. Iterative position projection (Fix A)
+    for (let it = 0; it < positionIterations; it++) {
+      for (let c = 0; c < contacts.length; c++) {
+        const contact = contacts[c];
+        const ctx = ctxs[c];
+        if (ctx.K < 1e-9) continue;
         const bA = contact.bodyA, bB = contact.bodyB;
-        const prevA = bA._prevPose;
-        const pA_world = bA.position.clone().add(rotateVectorByQuat(contact.rA_local, bA.quaternion));
-        const pA_prev  = prevA.position.clone()
-                          .add(rotateVectorByQuat(contact.rA_local, prevA.quaternion));
-        const dpA = pA_world.sub(pA_prev);
 
-        let dp;
+        // (a) Current penetration via world anchors.
+        const pA_now = bA.position.clone()
+          .add(rotateVectorByQuat(contact.rA_local, bA.quaternion));
+        let gap;
         if (bB) {
-          const prevB = bB._prevPose;
-          const pB_world = bB.position.clone().add(rotateVectorByQuat(contact.rB_local, bB.quaternion));
-          const pB_prev  = prevB.position.clone()
-                            .add(rotateVectorByQuat(contact.rB_local, prevB.quaternion));
-          const dpB = pB_world.sub(pB_prev);
-          dp = dpA.sub(dpB);
+          const pB_now = bB.position.clone()
+            .add(rotateVectorByQuat(contact.rB_local, bB.quaternion));
+          // gap = (Δpos_A − Δpos_B) · n   (= dA_in_-n + dB_in_+n with proper sign)
+          gap = pA_now.sub(anchorsA[c]).sub(pB_now.sub(anchorsB[c])).dot(contact.normal);
         } else {
-          dp = dpA; // static body: prev = current = 0
+          gap = pA_now.sub(anchorsA[c]).dot(contact.normal);
         }
-        // Tangential component
-        const dn = dp.dot(contact.normal);
-        const dp_t = dp.sub(contact.normal.clone().multiplyScalar(dn));
-        // Cone clamp: only enforce static friction if projected λ_t would
-        // remain inside the Coulomb cone.
-        const lenT = dp_t.length();
-        if (lenT > 1e-9) {
-          // Hypothetical λ_t magnitude after applying Δx = −dp_t:
-          //   dλ_t = lenT / K_t  → new |λ_t| ≈ |existing + dλ_t·axis|
-          const axisT = dp_t.clone().multiplyScalar(1 / lenT);
-          const tCtx = effectiveMassAlong(bA, ctx.rA, bB, ctx.rB, axisT);
-          if (tCtx.K > 1e-9) {
-            const dlT = lenT / tCtx.K;
-            // Project current accumulator on axisT (for cone test only)
-            const lambdaTAxis = contact.lambdaTAcc.dot(axisT) + dlT;
-            const cone = muS * contact.lambdaAcc;
-            // Use vector magnitude for the cone check (more conservative).
-            const tentative = contact.lambdaTAcc.clone().addScaledVector(axisT, dlT);
-            if (tentative.length() <= cone) {
-              // Stick: apply position correction Δx = −dp_t
-              applyPositionCorrectionAlong(
-                contact, ctx, tCtx.IA_inv, tCtx.IB_inv,
-                axisT, -dlT
-              );
-              contact.lambdaTAcc.copy(tentative);
+        // gap < 0 means bodies have moved apart along +normal (penetration shrunk).
+        // C = remaining penetration.
+        const C = contact.penetration + gap;
+        if (C <= 1e-9) continue;
+
+        // (b) Normal correction with relaxation + per-iter clamp (Fix B).
+        let dlambda = (C / ctx.K) * posRelaxation;
+        if (contact.lambdaAcc + dlambda < 0) dlambda = -contact.lambdaAcc;
+        // Cap linear displacement of the lighter body to posMaxMove.
+        const minMass = bB ? Math.min(bA.mass, bB.mass) : bA.mass;
+        const maxLambdaByMove = posMaxMove * minMass;
+        if (dlambda > maxLambdaByMove) dlambda = maxLambdaByMove;
+        contact.lambdaAcc += dlambda;
+        applyContactPositionCorrection(contact, ctx, dlambda);
+
+        // (c) Static friction position sub-pass (PBDBodies §3.5)
+        if (muS > 0 && contact.lambdaAcc > 0) {
+          const prevA = bA._prevPose;
+          const pA_w = bA.position.clone().add(rotateVectorByQuat(contact.rA_local, bA.quaternion));
+          const pA_p = prevA.position.clone()
+                        .add(rotateVectorByQuat(contact.rA_local, prevA.quaternion));
+          const dpA = pA_w.sub(pA_p);
+
+          let dp;
+          if (bB) {
+            const prevB = bB._prevPose;
+            const pB_w = bB.position.clone().add(rotateVectorByQuat(contact.rB_local, bB.quaternion));
+            const pB_p = prevB.position.clone()
+                          .add(rotateVectorByQuat(contact.rB_local, prevB.quaternion));
+            const dpB = pB_w.sub(pB_p);
+            dp = dpA.sub(dpB);
+          } else {
+            dp = dpA;
+          }
+          const dn = dp.dot(contact.normal);
+          const dp_t = dp.sub(contact.normal.clone().multiplyScalar(dn));
+          const lenT = dp_t.length();
+          if (lenT > 1e-9) {
+            const axisT = dp_t.clone().multiplyScalar(1 / lenT);
+            const tCtx = effectiveMassAlong(bA, ctx.rA, bB, ctx.rB, axisT);
+            if (tCtx.K > 1e-9) {
+              const dlT = lenT / tCtx.K;
+              const cone = muS * contact.lambdaAcc;
+              const tentative = contact.lambdaTAcc.clone().addScaledVector(axisT, dlT);
+              if (tentative.length() <= cone) {
+                applyPositionCorrectionAlong(
+                  contact, ctx, tCtx.IA_inv, tCtx.IB_inv,
+                  axisT, -dlT
+                );
+                contact.lambdaTAcc.copy(tentative);
+              }
             }
-            // else: slip — dynamic friction will limit the velocity in pass (6)
           }
         }
       }
@@ -317,29 +384,57 @@ export function xpbdSolveContacts(bodies, planes, detectContacts, dt, options = 
       setVelocityFromPoseDelta(bodies[i], prev[i], h);
     }
 
-    // 6. Dynamic friction velocity pass (PBDBodies §3.6)
-    if (muD > 0) {
-      for (let c = 0; c < contacts.length; c++) {
-        const contact = contacts[c];
-        if (contact.lambdaAcc <= 0) continue;
-        const ctx = effectiveMass(contact);
-        if (ctx.K < 1e-9) continue;
+    // 6. Velocity pass: restitution gate + dynamic friction (PBDBodies §3.6)
+    //    For each active contact (λ_n > 0):
+    //      (a) Restitution gate: if 0 < v_n < V_REST_GATE, apply normal impulse
+    //          J_n = -m_eff·v_n along contact.normal to snap separation to zero.
+    //          v_n here is v_rel·normal; normal points A→B, so positive v_n
+    //          means B is moving away from A (separating). Negative v_n means
+    //          approaching — left alone (no restitution) so impact damping
+    //          comes from the next position pass.
+    //      (b) Tangential dynamic friction: cap |Δv_t| by Coulomb h·μ·|f_n|;
+    //          if |v_t| < V_STICK, zero v_t completely.
+    for (let c = 0; c < contacts.length; c++) {
+      const contact = contacts[c];
+      if (contact.lambdaAcc <= 0) continue;
+      const ctx = effectiveMass(contact);
+      if (ctx.K < 1e-9) continue;
+
+      // (a) Normal restitution gate — zero out small *separating* normal vel.
+      if (V_REST_GATE > 0) {
+        const vRelN = relativeVelocity(contact, ctx);
+        const vnN = vRelN.dot(contact.normal);
+        if (vnN > 0 && vnN < V_REST_GATE) {
+          applyContactImpulse(contact, ctx, -ctx.m_eff * vnN);
+        }
+      }
+
+      if (muD > 0 || V_STICK > 0) {
         const vRel = relativeVelocity(contact, ctx);
         const vn = vRel.dot(contact.normal);
         const vt = vRel.sub(contact.normal.clone().multiplyScalar(vn));
         const vtLen = vt.length();
         if (vtLen < 1e-9) continue;
 
+        // Stick: snap tangential velocity to zero when very small.
+        if (vtLen < V_STICK) {
+          const axisT = vt.multiplyScalar(1 / vtLen);
+          const tCtx = effectiveMassAlong(contact.bodyA, ctx.rA, contact.bodyB, ctx.rB, axisT);
+          if (tCtx.K < 1e-9) continue;
+          const J = axisT.multiplyScalar(-tCtx.m_eff * vtLen);
+          applyTangentialImpulse(contact, ctx, J);
+          continue;
+        }
+
+        if (muD <= 0) continue;
+
         const fn = contact.lambdaAcc * invH2;         // normal force magnitude
         const maxDvMag = h * muD * fn;                // max |Δv| from Coulomb cone
         const dvMag = Math.min(maxDvMag, vtLen);
         const axisT = vt.multiplyScalar(1 / vtLen);   // unit tangential direction
-        // m_eff along axisT (full pair):
         const tCtx = effectiveMassAlong(contact.bodyA, ctx.rA, contact.bodyB, ctx.rB, axisT);
         if (tCtx.K < 1e-9) continue;
         // Apply impulse J_t = m_eff_t · (−axisT · dvMag).
-        // applyTangentialImpulse expects A=-imp, B=+imp; we want to reduce v_t,
-        // i.e. push B in -axisT (opposite to vt) and A in +axisT.
         const J = axisT.multiplyScalar(-tCtx.m_eff * dvMag);
         applyTangentialImpulse(contact, ctx, J);
       }

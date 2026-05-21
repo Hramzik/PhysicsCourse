@@ -8,7 +8,7 @@ import { xpbdSolveContacts } from '../engine/contact_solver.js';
 import { SAP } from '../engine/sap.js';
 import { LBVH } from '../engine/lbvh.js';
 
-const NUM_BODIES = 400;
+const NUM_BODIES = 200;
 const BOX_HALF = 6.0;
 const BOX_HEIGHT = 12.0;
 
@@ -133,6 +133,7 @@ export function loadPart4Scene1Many(rendererData, method = 'sap') {
     step(dt) {
       const info = xpbdSolveContacts(bodies, planes, detectContacts, dt, {
         substeps: 6,
+        positionIterations: 4,
         damping: currentDamping,
         muS: BASE_MU_S * frictionScale,
         muD: BASE_MU_D * frictionScale

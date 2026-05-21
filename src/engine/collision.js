@@ -104,9 +104,14 @@ export function collideBoxPlane(body, plane, out) {
   }
 }
 
-// ─── Box vs Box via SAT ─────────────────────────────────────────────────────
-// 15 axes (3 + 3 + 9). Returns at most one contact with the minimum-overlap
-// axis as the separating direction.
+// ─── Box vs Box via SAT + face clipping ─────────────────────────────────────
+// 15 axes (3 + 3 + 9). For face-axis contacts, generates up to 4 contact
+// points via Sutherland–Hodgman clipping of the incident face polygon against
+// the side planes of the reference face — necessary for stable stacking
+// (a single contact point creates a parasitic angular moment).
+//
+// For edge-edge axes a single contact point is generated (deepest incident
+// vertex), which is geometrically correct for sharp-edge collisions.
 
 export function collideBoxBox(bodyA, bodyB, out) {
   const RA = bodyA.getRotationMatrix(bodyA.quaternion);
@@ -129,24 +134,37 @@ export function collideBoxBox(bodyA, bodyB, out) {
 
   const t = new THREE.Vector3().subVectors(bodyB.position, bodyA.position);
 
-  // Build 15 candidate axes.
+  // Build candidate axes with type tags:
+  //   type 0 = face of A, 1 = face of B, 2 = edge-edge (cross axisA[i] × axisB[j])
+  //   idx  = axis index within that group (0..2 for face, 0..8 for edge-edge)
   const axes = [];
-  axes.push(axesA[0], axesA[1], axesA[2]);
-  axes.push(axesB[0], axesB[1], axesB[2]);
+  axes.push({ v: axesA[0], type: 0, idx: 0 });
+  axes.push({ v: axesA[1], type: 0, idx: 1 });
+  axes.push({ v: axesA[2], type: 0, idx: 2 });
+  axes.push({ v: axesB[0], type: 1, idx: 0 });
+  axes.push({ v: axesB[1], type: 1, idx: 1 });
+  axes.push({ v: axesB[2], type: 1, idx: 2 });
   for (let i = 0; i < 3; i++) {
     for (let j = 0; j < 3; j++) {
       const c = new THREE.Vector3().crossVectors(axesA[i], axesB[j]);
       if (c.lengthSq() > 1e-8) {
         c.normalize();
-        axes.push(c);
+        axes.push({ v: c, type: 2, idx: i * 3 + j });
       }
     }
   }
 
+  // Face-axis preference bias (PBDBodies / Box2D trick): we slightly prefer
+  // face axes over edge-edge axes when overlaps are close, because face axes
+  // give a much more stable contact manifold and edge-edge cross axes are
+  // numerically noisy. Without this, in stacks a near-tie can flip between a
+  // face and an edge axis between substeps and produce jitter.
+  const FACE_BIAS = 1e-3;
+
   let minOverlap = Infinity;
-  let bestAxis = null;
+  let best = null;
   for (let i = 0; i < axes.length; i++) {
-    const ax = axes[i];
+    const ax = axes[i].v;
     const rA = Math.abs(axesA[0].dot(ax)) * halfA[0]
              + Math.abs(axesA[1].dot(ax)) * halfA[1]
              + Math.abs(axesA[2].dot(ax)) * halfA[2];
@@ -156,37 +174,196 @@ export function collideBoxBox(bodyA, bodyB, out) {
     const distOnAxis = Math.abs(t.dot(ax));
     const overlap = (rA + rB) - distOnAxis;
     if (overlap < 0) return; // separating axis found
-    if (overlap < minOverlap) {
-      minOverlap = overlap;
-      bestAxis = ax;
+    const effOverlap = overlap + (axes[i].type === 2 ? FACE_BIAS : 0);
+    if (effOverlap < minOverlap) {
+      minOverlap = effOverlap;
+      best = axes[i];
     }
   }
-  if (!bestAxis) return;
+  if (!best) return;
 
   // Orient normal from A to B
-  const normal = bestAxis.clone();
+  const normal = best.v.clone();
   if (normal.dot(t) < 0) normal.multiplyScalar(-1);
 
-  // Contact point: incident vertex on B (deepest in the direction of -normal).
-  // Pick the vertex of B that is most along (-normal) from its center, i.e.
-  // furthest along axis pointing from B into A.
-  const vertsB = getBoxVertices(bodyB);
-  let deepest = vertsB[0];
-  let deepestDot = deepest.dot(normal);
-  for (let i = 1; i < 8; i++) {
-    const d = vertsB[i].dot(normal);
-    if (d < deepestDot) { deepestDot = d; deepest = vertsB[i]; }
+  // Recover the true (non-biased) overlap as the penetration scalar.
+  const rA0 = Math.abs(axesA[0].dot(normal)) * halfA[0]
+           + Math.abs(axesA[1].dot(normal)) * halfA[1]
+           + Math.abs(axesA[2].dot(normal)) * halfA[2];
+  const rB0 = Math.abs(axesB[0].dot(normal)) * halfB[0]
+           + Math.abs(axesB[1].dot(normal)) * halfB[1]
+           + Math.abs(axesB[2].dot(normal)) * halfB[2];
+  const truePen = (rA0 + rB0) - Math.abs(t.dot(normal));
+
+  // ── Edge-edge case: single contact point ──────────────────────────────
+  if (best.type === 2) {
+    const vertsB = getBoxVertices(bodyB);
+    let deepest = vertsB[0];
+    let deepestDot = deepest.dot(normal);
+    for (let i = 1; i < 8; i++) {
+      const d = vertsB[i].dot(normal);
+      if (d < deepestDot) { deepestDot = d; deepest = vertsB[i]; }
+    }
+    out.push({
+      bodyA, bodyB,
+      point: deepest.clone(),
+      rA_local: worldPointToLocal(bodyA, deepest),
+      rB_local: worldPointToLocal(bodyB, deepest),
+      normal,
+      penetration: truePen,
+      lambdaAcc: 0,
+      lambdaTAcc: new THREE.Vector3()
+    });
+    return;
   }
 
-  out.push({
-    bodyA,
-    bodyB,
-    point: deepest.clone(),
-    rA_local: worldPointToLocal(bodyA, deepest),
-    rB_local: worldPointToLocal(bodyB, deepest),
-    normal,
-    penetration: minOverlap,
-    lambdaAcc: 0,
-    lambdaTAcc: new THREE.Vector3()
-  });
+  // ── Face-axis case: face clipping for up to 4 contact points ──────────
+  // Reference body owns the face whose axis is `best`; incident body provides
+  // the polygon being clipped. Convention: refNormal points OUTWARD from the
+  // reference body, INTO the incident body.
+  let refBody, incBody, refAxes, incAxes, refHalfs, incHalfs, refAxisIdx;
+  let refNormal;
+  if (best.type === 0) {
+    refBody = bodyA; incBody = bodyB;
+    refAxes = axesA; incAxes = axesB;
+    refHalfs = halfA; incHalfs = halfB;
+    refAxisIdx = best.idx;
+    refNormal = normal.clone();          // normal A→B  ≡ outward from A
+  } else {
+    refBody = bodyB; incBody = bodyA;
+    refAxes = axesB; incAxes = axesA;
+    refHalfs = halfB; incHalfs = halfA;
+    refAxisIdx = best.idx;
+    refNormal = normal.clone().negate(); // outward from B  ≡ -normal
+  }
+
+  // Sign of refNormal along refAxes[refAxisIdx]  (±1)
+  const refAxisVec = refAxes[refAxisIdx];
+  const sign = refAxisVec.dot(refNormal) >= 0 ? 1 : -1;
+
+  // Reference face center & two in-face axes (and half-extents)
+  const refFaceCenter = refBody.position.clone()
+    .addScaledVector(refAxisVec, sign * refHalfs[refAxisIdx]);
+  const i1 = (refAxisIdx + 1) % 3;
+  const i2 = (refAxisIdx + 2) % 3;
+  const refU = refAxes[i1], refV = refAxes[i2];
+  const refHU = refHalfs[i1], refHV = refHalfs[i2];
+
+  // Incident face: face on incBody whose outward normal is most anti-parallel
+  // to refNormal (i.e. most aligned with -refNormal).
+  let bestInc = -Infinity;
+  let incAxisIdx = 0, incSign = 1;
+  for (let k = 0; k < 3; k++) {
+    const d = incAxes[k].dot(refNormal); // we want d ≈ -1 ideally
+    if (-d > bestInc) { bestInc = -d; incAxisIdx = k; incSign = -1; }
+    if ( d > bestInc) { bestInc =  d; incAxisIdx = k; incSign =  1; }
+  }
+  // incSign here = sign of inc face's outward normal along incAxes[incAxisIdx];
+  // outward = incSign * incAxes[incAxisIdx], and we want this most anti-parallel
+  // to refNormal, so flip the sign convention: outward direction is the one
+  // that minimizes dot(outward, refNormal).
+  // Recompute cleanly:
+  {
+    let minDot = Infinity;
+    for (let k = 0; k < 3; k++) {
+      const dp = incAxes[k].dot(refNormal);
+      if (dp < minDot)  { minDot = dp;  incAxisIdx = k; incSign =  1; }
+      if (-dp < minDot) { minDot = -dp; incAxisIdx = k; incSign = -1; }
+    }
+  }
+
+  const incFaceCenter = incBody.position.clone()
+    .addScaledVector(incAxes[incAxisIdx], incSign * incHalfs[incAxisIdx]);
+  const j1 = (incAxisIdx + 1) % 3;
+  const j2 = (incAxisIdx + 2) % 3;
+  const incU = incAxes[j1], incV = incAxes[j2];
+  const incHU = incHalfs[j1], incHV = incHalfs[j2];
+
+  // 4 vertices of incident face (world space)
+  let poly = [
+    incFaceCenter.clone().addScaledVector(incU,  incHU).addScaledVector(incV,  incHV),
+    incFaceCenter.clone().addScaledVector(incU,  incHU).addScaledVector(incV, -incHV),
+    incFaceCenter.clone().addScaledVector(incU, -incHU).addScaledVector(incV, -incHV),
+    incFaceCenter.clone().addScaledVector(incU, -incHU).addScaledVector(incV,  incHV),
+  ];
+
+  // Clip by the 4 side planes of the reference face (Sutherland–Hodgman).
+  poly = clipPolyHalfspace(poly, refFaceCenter, refU,  1, refHU);
+  poly = clipPolyHalfspace(poly, refFaceCenter, refU, -1, refHU);
+  poly = clipPolyHalfspace(poly, refFaceCenter, refV,  1, refHV);
+  poly = clipPolyHalfspace(poly, refFaceCenter, refV, -1, refHV);
+
+  // Keep only points below the reference plane (penetrating).
+  // sd = (p − refFaceCenter)·refNormal  (positive = outside refBody, negative = inside)
+  // pen = -sd
+  const surviving = [];
+  for (let i = 0; i < poly.length; i++) {
+    const p = poly[i];
+    const sd = p.clone().sub(refFaceCenter).dot(refNormal);
+    if (sd < 0) surviving.push({ point: p, pen: -sd });
+  }
+  if (surviving.length === 0) {
+    // Fallback: degenerate clip (shouldn't happen if SAT said overlap > 0).
+    // Emit a single contact at the deepest incident vertex.
+    let deepest = poly[0] || incFaceCenter;
+    let deepestSd = Infinity;
+    for (let i = 0; i < poly.length; i++) {
+      const sd = poly[i].clone().sub(refFaceCenter).dot(refNormal);
+      if (sd < deepestSd) { deepestSd = sd; deepest = poly[i]; }
+    }
+    if (deepestSd < 0) surviving.push({ point: deepest, pen: -deepestSd });
+  }
+
+  // Reduce to ≤ 4 contact points: keep the 4 with the largest penetration
+  // (these contribute most to the position correction; clipping a quad by 4
+  // half-planes gives ≤ 8 vertices).
+  if (surviving.length > 4) {
+    surviving.sort((a, b) => b.pen - a.pen);
+    surviving.length = 4;
+  }
+
+  for (let i = 0; i < surviving.length; i++) {
+    const p = surviving[i].point;
+    out.push({
+      bodyA, bodyB,
+      point: p.clone(),
+      rA_local: worldPointToLocal(bodyA, p),
+      rB_local: worldPointToLocal(bodyB, p),
+      normal: normal.clone(),
+      penetration: surviving[i].pen,
+      lambdaAcc: 0,
+      lambdaTAcc: new THREE.Vector3()
+    });
+  }
+}
+
+// Sutherland–Hodgman clip of a convex polygon against a single half-space.
+// The half-space is { p : sign * (p − planePoint) · axis  ≤ halfExtent }.
+// Returns a new array of THREE.Vector3 (input is left unchanged).
+function clipPolyHalfspace(poly, planePoint, axis, sign, halfExtent) {
+  const out = [];
+  const n = poly.length;
+  if (n === 0) return out;
+  for (let i = 0; i < n; i++) {
+    const p1 = poly[i];
+    const p2 = poly[(i + 1) % n];
+    const d1 = sign * (p1.x - planePoint.x) * axis.x
+             + sign * (p1.y - planePoint.y) * axis.y
+             + sign * (p1.z - planePoint.z) * axis.z - halfExtent;
+    const d2 = sign * (p2.x - planePoint.x) * axis.x
+             + sign * (p2.y - planePoint.y) * axis.y
+             + sign * (p2.z - planePoint.z) * axis.z - halfExtent;
+    const inside1 = d1 <= 0;
+    const inside2 = d2 <= 0;
+    if (inside1) out.push(p1);
+    if (inside1 !== inside2) {
+      const t = d1 / (d1 - d2);
+      out.push(new THREE.Vector3(
+        p1.x + (p2.x - p1.x) * t,
+        p1.y + (p2.y - p1.y) * t,
+        p1.z + (p2.z - p1.z) * t
+      ));
+    }
+  }
+  return out;
 }

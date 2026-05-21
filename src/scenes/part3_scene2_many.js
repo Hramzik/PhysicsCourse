@@ -145,7 +145,8 @@ export function loadPart3Scene2Many(rendererData, method = 'xpbd') {
   return {
     step(dt) {
       const info = xpbdSolveContacts(bodies, planes, detectContacts, dt, {
-        substeps: 8,
+        substeps: 6,
+        positionIterations: 4,
         damping: currentDamping,
         muS: BASE_MU_S * frictionScale,
         muD: BASE_MU_D * frictionScale
