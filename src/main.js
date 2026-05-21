@@ -3,6 +3,7 @@ import { CameraControls } from './render/camera_controls.js';
 import { Controls } from './ui/controls.js';
 import { loadPart1Scene1 } from './scenes/part1_scene1.js';
 import { loadPart2Scene1Spring } from './scenes/part2_scene1_spring.js';
+import { loadPart2Scene2TwoBodies } from './scenes/part2_scene2_two_bodies.js';
 
 const container = document.getElementById('canvas-container');
 const rendererData = createRenderer(container);
@@ -13,35 +14,81 @@ let currentScene = null;
 let currentPart = 'part1';
 let currentSceneKey = 'scene1';
 let currentIntegrator = 'global';
+let currentMethod = null;
 let speedFactor = 1;
 
-function loadScene(part, sceneKey, integrator){
-  // 1. Dispose old scene FIRST, before any UI changes
+// Default method per (part, scene)
+const DEFAULT_METHODS = {
+  part2: { twoBodies: 'xpbd' }
+};
+
+// Default damping per (part, scene, method). When a scene is loaded with a
+// specific method that has an entry here, the global damping slider is
+// programmatically set to that value (UI + internal state).
+const METHOD_DEFAULT_DAMPING = {
+  part2: {
+    twoBodies: {
+      xpbd: 0,
+      si_baumgarte: 0.9,
+      si_ngs: 0,
+      si_soft: 0.3
+    }
+  }
+};
+
+function getDefaultMethod(part, sceneKey){
+  return (DEFAULT_METHODS[part] && DEFAULT_METHODS[part][sceneKey]) || null;
+}
+
+function getMethodDefaultDamping(part, sceneKey, method){
+  if(!method) return null;
+  const partMap = METHOD_DEFAULT_DAMPING[part];
+  if(!partMap) return null;
+  const sceneMap = partMap[sceneKey];
+  if(!sceneMap) return null;
+  return (method in sceneMap) ? sceneMap[method] : null;
+}
+
+function loadScene(part, sceneKey, integrator, method){
+  // 1. Dispose old scene FIRST
   if(currentScene && currentScene.dispose) currentScene.dispose();
   currentScene = null;
 
-  // 2. Update state
+  // 2. Determine method (use default if not given and scene has methods)
+  const defaultMethod = getDefaultMethod(part, sceneKey);
+  if(method == null) method = defaultMethod;
+
+  // 3. Apply per-method default damping (silently updates slider + state)
+  const methodDamping = getMethodDefaultDamping(part, sceneKey, method);
+  if(methodDamping != null){
+    controls.setDamping(methodDamping);
+  }
+
+  // 4. Update state
   currentPart = part;
   currentSceneKey = sceneKey;
   currentIntegrator = integrator;
+  currentMethod = method;
 
-  // 3. Sync UI silently (no onChange callback fired)
-  controls.setSelection(part, sceneKey, integrator);
+  // 5. Sync UI silently (no onChange callback fired)
+  controls.setSelection(part, sceneKey, integrator, method);
 
-  // 4. Create new scene
+  // 5. Create new scene
   if(part === 'part1' && sceneKey === 'scene1'){
     currentScene = loadPart1Scene1(rendererData, integrator);
     controls.setStatsElements(currentScene.statElems);
   } else if(part === 'part2' && sceneKey === 'spring'){
     currentScene = loadPart2Scene1Spring(rendererData, integrator);
     controls.setStatsElements(currentScene.statElems);
+  } else if(part === 'part2' && sceneKey === 'twoBodies'){
+    currentScene = loadPart2Scene2TwoBodies(rendererData, method);
+    controls.setStatsElements(currentScene.statElems);
   } else {
-    // placeholder scene (not implemented)
     currentScene = null;
     controls.setStatsElements(null);
   }
 
-  // 5. Push current UI state into the freshly created scene
+  // 6. Push current UI state into the freshly created scene
   if(currentScene && currentScene.setDamping){
     currentScene.setDamping(controls.damping);
   }
@@ -51,16 +98,26 @@ controls.onChange((part, scene, integrator, speed, damping)=>{
   speedFactor = speed;
 
   if(part !== currentPart || scene !== currentSceneKey || integrator !== currentIntegrator){
-    loadScene(part, scene, integrator);
+    // Scene/part/integrator changed → reload. Use the method appropriate to
+    // the new (part, scene). If we're staying in the same scene, keep current
+    // method; otherwise pick the default.
+    const sameScene = (part === currentPart && scene === currentSceneKey);
+    const method = sameScene ? currentMethod : getDefaultMethod(part, scene);
+    loadScene(part, scene, integrator, method);
   }
 
   if(currentScene) currentScene.setDamping(damping);
 });
 
-// Reset scene: keep current integrator, just reload the scene
-controls.onReset((part, scene, integrator)=>{
+controls.onMethodChange((part, scene, method)=>{
+  // Reload current scene with new method
+  loadScene(part, scene, currentIntegrator, method);
+});
+
+// Reset scene: keep current integrator and method
+controls.onReset((part, scene, integrator, method)=>{
   speedFactor = controls.speed;
-  loadScene(part, scene, integrator);
+  loadScene(part, scene, integrator, method);
 });
 
 // Per-part integrator maps — must be set BEFORE setParts so that
@@ -80,14 +137,27 @@ controls.setIntegrators({
   part4: {}
 });
 
+// Per-(part, scene) method maps. When a scene has methods defined,
+// the method selector is shown and the integrator selector is hidden.
+controls.setMethods({
+  part2: {
+    twoBodies: {
+      xpbd: 'XPBD',
+      si_baumgarte: 'SI + Baumgarte',
+      si_ngs: 'SI + NGS',
+      si_soft: 'SI + Soft (Buddha)'
+    }
+  }
+});
+
 controls.setParts({
   part1: {label:'Part 1', scenes: {scene1:'Scene 1'}},
-  part2: {label:'Part 2', scenes: {spring:'Spring'}},
+  part2: {label:'Part 2', scenes: {spring:'Spring', twoBodies:'Two bodies (distance)'}},
   part3: {label:'Part 3', scenes: {placeholder:'(not implemented)'}},
   part4: {label:'Part 4', scenes: {placeholder:'(not implemented)'}}
 });
 
-loadScene('part1', 'scene1', 'global');
+loadScene('part1', 'scene1', 'global', null);
 
 function animate(t){
   requestAnimationFrame(animate);

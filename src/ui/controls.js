@@ -3,6 +3,9 @@ export class Controls{
     this.partSelect = document.getElementById('part-select');
     this.sceneSelect = document.getElementById('scene-select');
     this.integratorSelect = document.getElementById('integrator-select');
+    this.methodSelect = document.getElementById('method-select');
+    this.methodRow = document.getElementById('method-row');
+    this.integratorRow = document.getElementById('integrator-row');
     this.speedRange = document.getElementById('speed-range');
     this.speedValue = document.getElementById('speed-value');
     this.dampingRange = document.getElementById('damping-range');
@@ -10,16 +13,31 @@ export class Controls{
     this.speed = parseFloat(this.speedRange.value);
     this.damping = parseFloat(this.dampingRange.value);
     this._cb = ()=>{};
+    this._methodCb = null;
     this._resetCb = null;
     // _integratorsMap: { partKey: { integratorKey: label, … }, … }
     // or flat { integratorKey: label } for backward compat
     this._integratorsMap = {};
+    // _methodsMap: { partKey: { sceneKey: { methodKey: label, … } } }
+    this._methodsMap = {};
     // When true, _onChange() is a no-op (used during programmatic UI sync)
     this._silent = false;
 
     this.partSelect.addEventListener('change', ()=>this._populateScenes());
-    this.sceneSelect.addEventListener('change', ()=>this._onChange());
+    this.sceneSelect.addEventListener('change', ()=>{
+      this._populateMethods();
+      this._updateRowsVisibility();
+      this._onChange();
+    });
     this.integratorSelect.addEventListener('change', ()=>this._onChange());
+    if(this.methodSelect){
+      this.methodSelect.addEventListener('change', ()=>{
+        if(this._silent) return;
+        if(this._methodCb){
+          this._methodCb(this.partSelect.value, this.sceneSelect.value, this.methodSelect.value);
+        }
+      });
+    }
     this.speedRange.addEventListener('input', ()=>{
       this.speed = parseFloat(this.speedRange.value);
       this.speedValue.textContent = `${this.speed.toFixed(1)}x`;
@@ -46,7 +64,12 @@ export class Controls{
       this._onChange();
     });
     this.resetButton.addEventListener('click', ()=>{
-      if(this._resetCb) this._resetCb(this.partSelect.value, this.sceneSelect.value, this.integratorSelect.value);
+      if(this._resetCb) this._resetCb(
+        this.partSelect.value,
+        this.sceneSelect.value,
+        this.integratorSelect.value,
+        this.methodSelect ? this.methodSelect.value : null
+      );
     });
   }
 
@@ -61,10 +84,9 @@ export class Controls{
   }
 
   /**
-   * Programmatically set part/scene/integrator without triggering the onChange callback.
-   * Repopulates integrator list for the given part, then sets all three values.
+   * Programmatically set part/scene/integrator/method without triggering callbacks.
    */
-  setSelection(part, scene, integrator){
+  setSelection(part, scene, integrator, method){
     this._silent = true;
     try{
       // Update part
@@ -79,9 +101,12 @@ export class Controls{
       this.sceneSelect.value = scene;
       // Repopulate integrators for this part
       this._populateIntegrators();
-      this.integratorSelect.value = integrator;
+      if(integrator != null) this.integratorSelect.value = integrator;
+      // Repopulate methods for this (part, scene)
+      this._populateMethods();
+      if(method != null && this.methodSelect) this.methodSelect.value = method;
       // Update visibility
-      this._updateIntegratorVisibility(part);
+      this._updateRowsVisibility();
     } finally {
       this._silent = false;
     }
@@ -96,16 +121,24 @@ export class Controls{
       this.sceneSelect.appendChild(opt);
     }
     this._populateIntegrators();
-    this._updateIntegratorVisibility(part);
+    this._populateMethods();
+    this._updateRowsVisibility();
     this._onChange();
   }
 
-  _updateIntegratorVisibility(part){
-    const integratorRow = document.getElementById('integrator-row');
-    if(integratorRow){
-      // Show integrator selector for all parts that have integrators defined
-      const map = this._getIntegratorsForPart(part);
-      integratorRow.style.display = (Object.keys(map).length > 0) ? 'block' : 'none';
+  _updateRowsVisibility(){
+    const part = this.partSelect.value;
+    const scene = this.sceneSelect.value;
+    const methodMap = this._getMethodsForScene(part, scene);
+    const hasMethods = Object.keys(methodMap).length > 0;
+    const integratorMap = this._getIntegratorsForPart(part);
+    const hasIntegrators = Object.keys(integratorMap).length > 0;
+    if(this.integratorRow){
+      // Hide integrator row when this scene exposes a method selector instead
+      this.integratorRow.style.display = (hasIntegrators && !hasMethods) ? 'block' : 'none';
+    }
+    if(this.methodRow){
+      this.methodRow.style.display = hasMethods ? 'block' : 'none';
     }
   }
 
@@ -119,15 +152,30 @@ export class Controls{
     this._populateIntegrators();
   }
 
+  /**
+   * Set methods per (part, scene):
+   *   { part2: { twoBodies: { xpbd: 'XPBD', ... } } }
+   */
+  setMethods(map){
+    this._methodsMap = map || {};
+    this._populateMethods();
+    this._updateRowsVisibility();
+  }
+
   _getIntegratorsForPart(part){
     if(!this._integratorsMap) return {};
-    // Check if it's a per-part map (values are objects, not strings)
     const firstVal = Object.values(this._integratorsMap)[0];
     if(firstVal && typeof firstVal === 'object'){
       return this._integratorsMap[part] || {};
     }
-    // Flat map — return as-is
     return this._integratorsMap;
+  }
+
+  _getMethodsForScene(part, scene){
+    if(!this._methodsMap) return {};
+    const partMap = this._methodsMap[part];
+    if(!partMap) return {};
+    return partMap[scene] || {};
   }
 
   _populateIntegrators(){
@@ -141,8 +189,39 @@ export class Controls{
     }
   }
 
-  onChange(cb){ this._cb = cb; }
+  _populateMethods(){
+    if(!this.methodSelect) return;
+    const part = this.partSelect ? this.partSelect.value : null;
+    const scene = this.sceneSelect ? this.sceneSelect.value : null;
+    const map = (part && scene) ? this._getMethodsForScene(part, scene) : {};
+    this.methodSelect.innerHTML = '';
+    for(const key of Object.keys(map)){
+      const opt = document.createElement('option'); opt.value=key; opt.textContent=map[key];
+      this.methodSelect.appendChild(opt);
+    }
+  }
 
+  get currentMethod(){
+    return this.methodSelect ? this.methodSelect.value : null;
+  }
+
+  /**
+   * Programmatically set damping value (slider + label + internal state)
+   * without firing onChange.
+   */
+  setDamping(value){
+    this._silent = true;
+    try{
+      this.damping = value;
+      this.dampingRange.value = String(value);
+      this.dampingValue.textContent = value.toFixed(4);
+    } finally {
+      this._silent = false;
+    }
+  }
+
+  onChange(cb){ this._cb = cb; }
+  onMethodChange(cb){ this._methodCb = cb; }
   onReset(cb){ this._resetCb = cb; }
 
   _onChange(){
