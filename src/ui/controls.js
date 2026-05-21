@@ -10,11 +10,15 @@ export class Controls{
     this.speedValue = document.getElementById('speed-value');
     this.dampingRange = document.getElementById('damping-range');
     this.dampingValue = document.getElementById('damping-value');
+    this.frictionRange = document.getElementById('friction-range');
+    this.frictionValue = document.getElementById('friction-value');
     this.speed = parseFloat(this.speedRange.value);
     this.damping = parseFloat(this.dampingRange.value);
+    this.friction = this.frictionRange ? parseFloat(this.frictionRange.value) : 1;
     this._cb = ()=>{};
     this._methodCb = null;
     this._resetCb = null;
+    this._frictionCb = null;
     // _integratorsMap: { partKey: { integratorKey: label, … }, … }
     // or flat { integratorKey: label } for backward compat
     this._integratorsMap = {};
@@ -48,8 +52,16 @@ export class Controls{
       this.dampingValue.textContent = this.damping.toFixed(4);
       this._onChange();
     });
+    if(this.frictionRange){
+      this.frictionRange.addEventListener('input', ()=>{
+        this.friction = parseFloat(this.frictionRange.value);
+        this.frictionValue.textContent = this.friction.toFixed(2);
+        if(this._frictionCb && !this._silent) this._frictionCb(this.friction);
+      });
+    }
     this.resetSpeedButton = document.getElementById('reset-speed-button');
     this.resetDampingButton = document.getElementById('reset-damping-button');
+    this.resetFrictionButton = document.getElementById('reset-friction-button');
     this.resetButton = document.getElementById('reset-button');
     this.resetSpeedButton.addEventListener('click', ()=>{
       this.speedRange.value = '1';
@@ -63,6 +75,14 @@ export class Controls{
       this.dampingValue.textContent = '0.0000';
       this._onChange();
     });
+    if(this.resetFrictionButton){
+      this.resetFrictionButton.addEventListener('click', ()=>{
+        this.frictionRange.value = '1';
+        this.friction = 1;
+        this.frictionValue.textContent = '1.00';
+        if(this._frictionCb) this._frictionCb(this.friction);
+      });
+    }
     this.resetButton.addEventListener('click', ()=>{
       if(this._resetCb) this._resetCb(
         this.partSelect.value,
@@ -223,6 +243,7 @@ export class Controls{
   onChange(cb){ this._cb = cb; }
   onMethodChange(cb){ this._methodCb = cb; }
   onReset(cb){ this._resetCb = cb; }
+  onFrictionChange(cb){ this._frictionCb = cb; }
 
   _onChange(){
     if(this._silent) return;
