@@ -10,6 +10,13 @@ export class Controls{
     this.speed = parseFloat(this.speedRange.value);
     this.damping = parseFloat(this.dampingRange.value);
     this._cb = ()=>{};
+    this._resetCb = null;
+    // _integratorsMap: { partKey: { integratorKey: label, … }, … }
+    // or flat { integratorKey: label } for backward compat
+    this._integratorsMap = {};
+    // When true, _onChange() is a no-op (used during programmatic UI sync)
+    this._silent = false;
+
     this.partSelect.addEventListener('change', ()=>this._populateScenes());
     this.sceneSelect.addEventListener('change', ()=>this._onChange());
     this.integratorSelect.addEventListener('change', ()=>this._onChange());
@@ -38,9 +45,8 @@ export class Controls{
       this.dampingValue.textContent = '0.0000';
       this._onChange();
     });
-    this.resetButton = document.getElementById('reset-button');
     this.resetButton.addEventListener('click', ()=>{
-      if(this._resetCb) this._resetCb(this.partSelect.value, this.sceneSelect.value);
+      if(this._resetCb) this._resetCb(this.partSelect.value, this.sceneSelect.value, this.integratorSelect.value);
     });
   }
 
@@ -52,6 +58,33 @@ export class Controls{
       this.partSelect.appendChild(opt);
     }
     this._populateScenes();
+  }
+
+  /**
+   * Programmatically set part/scene/integrator without triggering the onChange callback.
+   * Repopulates integrator list for the given part, then sets all three values.
+   */
+  setSelection(part, scene, integrator){
+    this._silent = true;
+    try{
+      // Update part
+      this.partSelect.value = part;
+      // Repopulate scenes for this part
+      const scenes = this._parts[part].scenes || {};
+      this.sceneSelect.innerHTML = '';
+      for(const k of Object.keys(scenes)){
+        const opt = document.createElement('option'); opt.value=k; opt.textContent=scenes[k];
+        this.sceneSelect.appendChild(opt);
+      }
+      this.sceneSelect.value = scene;
+      // Repopulate integrators for this part
+      this._populateIntegrators();
+      this.integratorSelect.value = integrator;
+      // Update visibility
+      this._updateIntegratorVisibility(part);
+    } finally {
+      this._silent = false;
+    }
   }
 
   _populateScenes(){
@@ -70,20 +103,40 @@ export class Controls{
   _updateIntegratorVisibility(part){
     const integratorRow = document.getElementById('integrator-row');
     if(integratorRow){
-      integratorRow.style.display = (part === 'part2') ? 'none' : 'block';
+      // Show integrator selector for all parts that have integrators defined
+      const map = this._getIntegratorsForPart(part);
+      integratorRow.style.display = (Object.keys(map).length > 0) ? 'block' : 'none';
     }
   }
 
+  /**
+   * Set integrators. Accepts either:
+   *   - flat map { key: label }  — used for all parts (backward compat)
+   *   - per-part map { part1: { key: label }, part2: { key: label } }
+   */
   setIntegrators(map){
-    this._integrators = map;
+    this._integratorsMap = map;
     this._populateIntegrators();
   }
 
+  _getIntegratorsForPart(part){
+    if(!this._integratorsMap) return {};
+    // Check if it's a per-part map (values are objects, not strings)
+    const firstVal = Object.values(this._integratorsMap)[0];
+    if(firstVal && typeof firstVal === 'object'){
+      return this._integratorsMap[part] || {};
+    }
+    // Flat map — return as-is
+    return this._integratorsMap;
+  }
+
   _populateIntegrators(){
-    if(!this.integratorSelect || !this._integrators) return;
+    if(!this.integratorSelect || !this._integratorsMap) return;
+    const part = this.partSelect ? this.partSelect.value : null;
+    const map = part ? this._getIntegratorsForPart(part) : this._integratorsMap;
     this.integratorSelect.innerHTML = '';
-    for(const key of Object.keys(this._integrators)){
-      const opt = document.createElement('option'); opt.value=key; opt.textContent=this._integrators[key];
+    for(const key of Object.keys(map)){
+      const opt = document.createElement('option'); opt.value=key; opt.textContent=map[key];
       this.integratorSelect.appendChild(opt);
     }
   }
@@ -92,7 +145,10 @@ export class Controls{
 
   onReset(cb){ this._resetCb = cb; }
 
-  _onChange(){ this._cb(this.partSelect.value, this.sceneSelect.value, this.integratorSelect.value, this.speed, this.damping); }
+  _onChange(){
+    if(this._silent) return;
+    this._cb(this.partSelect.value, this.sceneSelect.value, this.integratorSelect.value, this.speed, this.damping);
+  }
 
   setStatsElements(statElems){
     if(!statElems){
