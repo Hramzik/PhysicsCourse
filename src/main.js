@@ -195,9 +195,9 @@ controls.setMethods({
 
 controls.setParts({
   part1: {label:'Part 1', scenes: {scene1:'Scene 1'}},
-  part2: {label:'Part 2', scenes: {spring:'Spring', twoBodies:'Two bodies (distance)'}},
-  part3: {label:'Part 3', scenes: {boxes:'10 boxes (gravity)', many:'~1000 cubes (spatial grid)'}},
-  part4: {label:'Part 4', scenes: {many:'~400 varied boxes (SAP vs LBVH)'}}
+  part2: {label:'Part 2', scenes: {spring:'Spring', twoBodies:'Two bodies'}},
+  part3: {label:'Part 3', scenes: {boxes:'10 boxes (gravity)', many:'1000 cubes'}},
+  part4: {label:'Part 4', scenes: {many:'200 varied boxes'}}
 });
 
 loadScene('part1', 'scene1', 'global', null);
