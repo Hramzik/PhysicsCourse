@@ -1,0 +1,110 @@
+// Все кроме position и linearVelocity хранит в локальных координатах, для глобальных есть специальные методы
+export class RigidBody3D{
+  constructor({mass=1, size=[1,1,1], position=[0,0,0], quaternion=null}={}){
+    this.mass = mass;
+    this.size = size.slice();
+    this.position = new THREE.Vector3(...position);
+    this.quaternion = quaternion ? quaternion.clone() : new THREE.Quaternion();
+    this.linearVelocity = new THREE.Vector3(0,0,0);
+    this.angularVelocityLocal = new THREE.Vector3(0,0,0);
+    this.forceAccum = new THREE.Vector3(0,0,0);
+    this.torqueLocal = new THREE.Vector3(0,0,0);
+    this._computeBodyInertia();
+    this.L_start = this.getAngularMomentum();
+  }
+
+  _computeBodyInertia(){
+    const [x,y,z] = this.size;
+    const m = this.mass;
+    const ix = (1/12)*m*(y*y+z*z);
+    const iy = (1/12)*m*(x*x+z*z);
+    const iz = (1/12)*m*(x*x+y*y);
+    this.inertiaLocal = new THREE.Matrix3();
+    this.inertiaLocal.set(
+      ix,0,0,
+      0,iy,0,
+      0,0,iz
+    );
+    this.inertiaLocalInversed = new THREE.Matrix3();
+    this.inertiaLocalInversed.set(
+      1/ix,0,0,
+      0,1/iy,0,
+      0,0,1/iz
+    );
+  }
+
+  getRotationMatrix(q){
+    const m4 = new THREE.Matrix4().makeRotationFromQuaternion(q);
+    const R = new THREE.Matrix3().setFromMatrix4(m4);
+    return R;
+  }
+
+  // compute world inertia matrix: R * I_local * R^T
+  getInertiaGlobal(){
+    const R = this.getRotationMatrix(this.quaternion);
+    const Rt = new THREE.Matrix3().copy(R).transpose();
+    const inertiaGlobal = new THREE.Matrix3();
+    inertiaGlobal.multiplyMatrices(R, this.inertiaLocal);
+    inertiaGlobal.multiply(Rt);
+    return inertiaGlobal;
+  }
+
+  getAngularVelocityGlobal(){
+    const R = this.getRotationMatrix(this.quaternion);
+    return new THREE.Vector3().copy(this.angularVelocityLocal).applyMatrix3(R);
+  }
+
+  setAngularVelocityGlobal(angularVelocityGlobal){
+    const R = this.getRotationMatrix(this.quaternion);
+    const Rt = new THREE.Matrix3().copy(R).transpose();
+    this.angularVelocityLocal.copy(angularVelocityGlobal).applyMatrix3(Rt);
+    this.L_start = this.getAngularMomentum();
+  }
+
+  clearForcesAndTorque(){
+    this.forceAccum.set(0,0,0);
+    this.torqueLocal.set(0,0,0);
+  }
+
+  addForceLocal(forceLocal){
+    this.forceAccum.add(forceLocal);
+  }
+
+  addTorqueLocal(torqueLocal){
+    this.torqueLocal.add(torqueLocal);
+  }
+
+  addForceGlobal(forceWorld){
+    const R = this.getRotationMatrix(this.quaternion);
+    const Rt = new THREE.Matrix3().copy(R).transpose();
+    const fLocal = forceWorld.clone().applyMatrix3(Rt);
+    this.addForceLocal(fLocal);
+  }
+
+  applyForceGlobalAtPointGlobal(worldPoint, forceWorld){
+    const rWorld = new THREE.Vector3().subVectors(worldPoint, this.position);
+    const torqueWorld = rWorld.clone().cross(forceWorld);
+    const R = this.getRotationMatrix(this.quaternion);
+    const Rt = new THREE.Matrix3().copy(R).transpose();
+    const fLocal = forceWorld.clone().applyMatrix3(Rt);
+    const tauLocal = torqueWorld.clone().applyMatrix3(Rt);
+    this.addForceLocal(fLocal);
+    this.addTorqueLocal(tauLocal);
+  }
+
+  getForceGlobal(){
+    const R = this.getRotationMatrix(this.quaternion);
+    return this.forceAccum.clone().applyMatrix3(R);
+  }
+
+  // angular momentum L = I_world * omega
+  getAngularMomentum(){
+    const Iw = this.getInertiaGlobal();
+    const w = this.getAngularVelocityGlobal();
+    const l = new THREE.Vector3();
+    l.x = Iw.elements[0]*w.x + Iw.elements[1]*w.y + Iw.elements[2]*w.z;
+    l.y = Iw.elements[3]*w.x + Iw.elements[4]*w.y + Iw.elements[5]*w.z;
+    l.z = Iw.elements[6]*w.x + Iw.elements[7]*w.y + Iw.elements[8]*w.z;
+    return l;
+  }
+}
